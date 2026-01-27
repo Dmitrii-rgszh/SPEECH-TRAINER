@@ -1,0 +1,14 @@
+{
+  "ollama": {
+    "base_url": "http://localhost:11434",
+    "model": "qwen2.5:7b-instruct",
+    "temperature": 0.4,
+    "num_ctx": 8192
+  },
+  "trainer": {
+    "product": "",
+    "tone": "дружелюбный, деловой",
+    "target": "прокачка продаж по телефону",
+    "language": "ru-RU"
+  }
+}
