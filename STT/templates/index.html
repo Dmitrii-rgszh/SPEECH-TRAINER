@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Speech-to-Text (RU) MVP</title>
+    <link rel="stylesheet" href="/static/style.css?v=3" />
+  </head>
+  <body>
+    <main class="container">
+      <h1>Speech-to-Text (RU)</h1>
+      <p class="hint">
+        Нажмите «Старт», говорите — текст будет появляться на лету. После
+        последнего слова подождите 3 секунды тишины, запись остановится
+        автоматически. Если тишина не определяется, нажмите «Стоп» вручную.
+      </p>
+
+      <div class="controls">
+        <button id="startBtn">Старт</button>
+        <button id="stopBtn" disabled>Стоп</button>
+        <button id="healthBtn">Проверить связь</button>
+        <span id="status">Готово</span>
+      </div>
+      <div class="version">UI v3</div>
+
+      <section class="result">
+        <h2>Результат</h2>
+        <pre id="output">—</pre>
+      </section>
+    </main>
+
+    <script src="/static/app.js?v=5"></script>
+  </body>
+</html>
