@@ -11,6 +11,9 @@ import wave
 from flask import Flask, jsonify, render_template, request
 from faster_whisper import WhisperModel
 
+import requests
+from werkzeug.exceptions import HTTPException
+
 app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0
 
@@ -27,6 +30,19 @@ BEAM_SIZE = int(os.getenv("WHISPER_BEAM_SIZE", "1"))
 model = None
 model_lock = threading.Lock()
 model_device = None
+
+
+# --- AI-AGENT ---
+AI_AGENT_URL = os.getenv("AI_AGENT_URL", "http://127.0.0.1:7000")
+
+
+def ai_agent_health(timeout_s: float = 1.5) -> dict:
+    try:
+        resp = requests.get(f"{AI_AGENT_URL.rstrip('/')}/health", timeout=timeout_s)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception:
+        return {"status": "error"}
 
 
 def get_model():
@@ -67,6 +83,11 @@ def index():
     return render_template("index.html")
 
 
+@app.get("/favicon.ico")
+def favicon():
+    return ("", 204)
+
+
 @app.after_request
 def add_no_cache_headers(response):
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
@@ -76,11 +97,24 @@ def add_no_cache_headers(response):
 
 @app.get("/health")
 def health():
-    return jsonify({"status": "ok", "device": model_device or DEVICE})
+    agent_health = ai_agent_health()
+    return jsonify(
+        {
+            "status": "ok",
+            "device": model_device or DEVICE,
+            "ai_agent": {
+                "ok": agent_health.get("status") == "ok",
+                "url": AI_AGENT_URL,
+                "llm": agent_health.get("llm"),
+            },
+        }
+    )
 
 
 @app.errorhandler(Exception)
 def handle_error(error):
+    if isinstance(error, HTTPException):
+        return error
     print(traceback.format_exc(), flush=True)
     return jsonify({"error": str(error), "device": model_device or DEVICE}), 500
 
@@ -131,8 +165,41 @@ def transcribe():
             os.remove(tmp_path)
 
 
+@app.post("/chat")
+def chat():
+    """Proxy chat request to AI-AGENT service."""
+    data = request.get_json(silent=True) or {}
+    try:
+        resp = requests.post(
+            f"{AI_AGENT_URL.rstrip('/')}/chat",
+            json=data,
+            timeout=120,
+        )
+        content_type = resp.headers.get("content-type", "")
+        if "application/json" in content_type:
+            payload = resp.json()
+        else:
+            payload = {"error": resp.text}
+
+        if not resp.ok:
+            return jsonify(payload), resp.status_code
+        return jsonify(payload)
+    except requests.exceptions.ConnectionError:
+        return (
+            jsonify(
+                {
+                    "error": "AI-AGENT недоступен. Запусти сервис AI-AGENT на http://127.0.0.1:7000",
+                }
+            ),
+            503,
+        )
+
+
 if __name__ == "__main__":
-    url = "http://127.0.0.1:5000"
+    host = os.getenv("APP_HOST", "127.0.0.1")
+    port = int(os.getenv("APP_PORT", "5000"))
+    url = f"http://{host}:{port}"
+    print(f"AI-AGENT URL: {AI_AGENT_URL}", flush=True)
     threading.Timer(1.0, lambda: webbrowser.open(url)).start()
     threading.Thread(target=get_model, daemon=True).start()
-    app.run(host="127.0.0.1", port=5000, debug=False, use_reloader=False)
+    app.run(host=host, port=port, debug=False, use_reloader=False)

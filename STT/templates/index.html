@@ -3,12 +3,12 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Speech-to-Text (RU) MVP</title>
-    <link rel="stylesheet" href="/static/style.css?v=3" />
+    <title>Речевой тренажер RGSL</title>
+    <link rel="stylesheet" href="/static/style.css?v=4" />
   </head>
   <body>
     <main class="container">
-      <h1>Speech-to-Text (RU)</h1>
+      <h1>Речевой тренажер RGSL</h1>
       <p class="hint">
         Нажмите «Старт», говорите — текст будет появляться на лету. После
         последнего слова подождите 3 секунды тишины, запись остановится
@@ -19,16 +19,24 @@
         <button id="startBtn">Старт</button>
         <button id="stopBtn" disabled>Стоп</button>
         <button id="healthBtn">Проверить связь</button>
+        <button id="resetChatBtn" class="secondary" type="button">
+          Сбросить чат
+        </button>
         <span id="status">Готово</span>
       </div>
       <div class="version">UI v3</div>
 
       <section class="result">
-        <h2>Результат</h2>
-        <pre id="output">—</pre>
+        <h2>Чат</h2>
+        <div id="chat" class="chat"></div>
+      </section>
+
+      <section class="result">
+        <h2>Транскрибация (на лету)</h2>
+        <pre id="livePreview">—</pre>
       </section>
     </main>
 
-    <script src="/static/app.js?v=5"></script>
+    <script src="/static/app.js?v=14"></script>
   </body>
 </html>

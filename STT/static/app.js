@@ -1,8 +1,12 @@
 const startBtn = document.getElementById("startBtn");
 const stopBtn = document.getElementById("stopBtn");
 const healthBtn = document.getElementById("healthBtn");
+const resetChatBtn = document.getElementById("resetChatBtn");
 const statusEl = document.getElementById("status");
-const outputEl = document.getElementById("output");
+const chatEl = document.getElementById("chat");
+const livePreviewEl = document.getElementById("livePreview");
+
+let chatSessionId = null;
 
 let audioContext;
 let mediaStream;
@@ -19,6 +23,8 @@ let calibrationSamples = 0;
 let lastVoiceMs = 0;
 let previewTimer = null;
 let previewInFlight = false;
+let autoRestart = true;
+let userStopped = false;
 
 const BASE_SILENCE_THRESHOLD = 0.01;
 const SILENCE_LIMIT_MS = 3000;
@@ -28,11 +34,54 @@ const PREVIEW_INTERVAL_MS = 500;
 startBtn.addEventListener("click", startRecording);
 stopBtn.addEventListener("click", stopRecording);
 healthBtn.addEventListener("click", checkHealth);
+if (resetChatBtn) resetChatBtn.addEventListener("click", resetChat);
+
+function appendChatMessage(role, text) {
+  if (!chatEl) return;
+
+  const row = document.createElement("div");
+  row.className = `chat-row ${role}`;
+
+  const bubble = document.createElement("div");
+  bubble.className = "chat-bubble";
+  bubble.textContent = text || "(пусто)";
+
+  row.appendChild(bubble);
+  chatEl.appendChild(row);
+  chatEl.scrollTop = chatEl.scrollHeight;
+}
+
+function setLivePreview(text) {
+  if (!livePreviewEl) return;
+  livePreviewEl.textContent = text || "—";
+}
+
+async function resetChat() {
+  const oldSession = chatSessionId;
+  chatSessionId = null;
+  if (chatEl) chatEl.innerHTML = "";
+  setLivePreview("—");
+
+  if (oldSession) {
+    try {
+      await fetch("/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text: "reset", session_id: oldSession, reset: true }),
+      });
+    } catch (_) {
+      // ignore reset errors
+    }
+  }
+
+  statusEl.textContent = "Чат сброшен";
+}
 
 async function startRecording() {
   if (recording) return;
+  userStopped = false;
 
-  outputEl.textContent = "—";
+  setLivePreview("—");
   statusEl.textContent = "Запись...";
   startBtn.disabled = true;
   stopBtn.disabled = false;
@@ -109,6 +158,7 @@ async function startRecording() {
 async function stopRecording() {
   if (!recording) return;
   recording = false;
+  userStopped = true;
 
   statusEl.textContent = "Подготовка аудио...";
   startBtn.disabled = false;
@@ -207,16 +257,53 @@ async function sendAudio(blob, { preview } = { preview: false }) {
       throw new Error(data.error || "Ошибка распознавания");
     }
     if (preview) {
-      outputEl.textContent = data.text || "(пусто)";
+      setLivePreview(data.text || "(пусто)");
       statusEl.textContent = "Распознавание...";
     } else {
-      outputEl.textContent = data.text || "(пусто)";
+      const finalText = (data.text || "").trim();
+      setLivePreview(finalText || "(пусто)");
+
+      if (finalText.length > 0) {
+        appendChatMessage("user", finalText);
+        appendChatMessage("assistant", "...");
+        const placeholder = chatEl?.lastElementChild?.querySelector?.(
+          ".chat-bubble"
+        );
+
+        try {
+          const chatResp = await fetch("/chat", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              text: finalText,
+              session_id: chatSessionId,
+            }),
+          });
+          const chatData = await chatResp.json();
+          if (!chatResp.ok) {
+            throw new Error(chatData.error || "Ошибка LLM");
+          }
+          chatSessionId = chatData.session_id;
+          if (placeholder) placeholder.textContent = chatData.reply || "(пусто)";
+        } catch (e) {
+          if (placeholder)
+            placeholder.textContent = "Ошибка LLM: " + (e?.message || String(e));
+        }
+      }
+
       statusEl.textContent = "Готово";
+
+      // Auto-restart recording after LLM response (hands-free mode)
+      if (autoRestart && !recording) {
+        setTimeout(() => {
+          if (!recording) startRecording();
+        }, 400);
+      }
     }
   } catch (error) {
     if (!preview) {
       const message = error.name === "AbortError" ? "Таймаут запроса" : error.message;
-      outputEl.textContent = "Ошибка: " + message;
+      appendChatMessage("assistant", "Ошибка: " + message);
       statusEl.textContent = "Ошибка";
     }
   }
@@ -227,7 +314,28 @@ async function checkHealth() {
   try {
     const response = await fetch("/health");
     const data = await response.json();
-    statusEl.textContent = data.status === "ok" ? "Связь OK" : "Связь: ошибка";
+    if (data.status !== "ok") {
+      statusEl.textContent = "Связь: ошибка";
+      return;
+    }
+
+    const agentOk = Boolean(data?.ai_agent?.ok);
+    if (!agentOk) {
+      statusEl.textContent = "Связь OK (AI-AGENT недоступен)";
+      return;
+    }
+
+    const llm = data?.ai_agent?.llm || {};
+    const llmOk = Boolean(llm?.ok);
+    if (!llmOk) {
+      statusEl.textContent = "Связь OK (LLM недоступна)";
+      return;
+    }
+
+    const modelPresent = llm?.provider === "ollama" ? Boolean(llm?.model_present) : true;
+    statusEl.textContent = modelPresent
+      ? "Связь OK (STT+AI-AGENT+LLM)"
+      : "Связь OK (LLM есть, модели нет)";
   } catch (error) {
     statusEl.textContent = "Связь: ошибка";
   }

@@ -1,0 +1,31 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 5000
+  },
+  "whisper": {
+    "model": "medium",
+    "device": "cuda",
+    "compute_type": "float16",
+    "beam_size": 1
+  },
+  "llm": {
+    "provider": "ollama",
+    "base_url": "http://localhost:11434",
+    "model": "qwen2.5:7b-instruct",
+    "temperature": 0.4,
+    "num_ctx": 8192,
+    "max_messages": 200,
+    "api_key": ""
+  },
+  "ai_agent": {
+    "host": "127.0.0.1",
+    "port": 7000,
+    "system_prompt": "Отвечай строго по-русски. Не добавляй другие языки или иероглифы.",
+    "ttl_minutes": 15,
+    "cleanup_fragments": true
+  },
+  "cuda": {
+    "bin_path": "E:/CUDA/bin"
+  }
+}

@@ -34,6 +34,10 @@ button {
   cursor: pointer;
 }
 
+button.secondary {
+  background: #111827;
+}
+
 button:disabled {
   background: #9ca3af;
   cursor: not-allowed;
@@ -50,6 +54,44 @@ button:disabled {
   background: #f3f4f6;
   border-radius: 8px;
   white-space: pre-wrap;
+}
+
+.chat {
+  height: 320px;
+  overflow: auto;
+  padding: 12px;
+  background: #f3f4f6;
+  border-radius: 8px;
+  border: 1px solid rgba(17, 24, 39, 0.06);
+}
+
+.chat-row {
+  display: flex;
+  margin: 8px 0;
+}
+
+.chat-row.user {
+  justify-content: flex-end;
+}
+
+.chat-row.assistant {
+  justify-content: flex-start;
+}
+
+.chat-bubble {
+  max-width: 85%;
+  padding: 10px 12px;
+  border-radius: 12px;
+  white-space: pre-wrap;
+  line-height: 1.35;
+  border: 1px solid rgba(17, 24, 39, 0.08);
+  background: #ffffff;
+}
+
+.chat-row.user .chat-bubble {
+  background: #2563eb;
+  color: #fff;
+  border-color: rgba(37, 99, 235, 0.25);
 }
 
 .version {

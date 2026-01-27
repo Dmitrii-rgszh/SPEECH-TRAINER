@@ -48,3 +48,47 @@
 
 - `set WHISPER_MODEL=small`
 - `python app.py`
+
+## LLM (чат-агент)
+
+STT UI поддерживает диалог с LLM: финальная транскрипция автоматически отправляется в `/chat`, ответ добавляется в чат.
+В модульной архитектуре `/chat` в STT является прокси в отдельный сервис **AI-AGENT**.
+
+### Провайдеры
+
+Выбираются переменной окружения (в AI-AGENT):
+
+- `LLM_PROVIDER=ollama` (по умолчанию)
+- `LLM_PROVIDER=openai_compat` (любой сервер с OpenAI-совместимым `/v1/chat/completions`)
+
+Общие настройки (перекрывают provider-specific):
+
+- `LLM_BASE_URL`
+- `LLM_MODEL`
+- `LLM_API_KEY` (обычно нужно только для `openai_compat`)
+- `LLM_TEMPERATURE`
+- `LLM_NUM_CTX`
+
+### Ollama (локально)
+
+По умолчанию:
+
+- `OLLAMA_BASE_URL=http://localhost:11434`
+- `OLLAMA_MODEL=qwen2.5:7b-instruct`
+
+### OpenAI-compatible server (Ubuntu)
+
+Пример (если у тебя поднят совместимый сервер на 8000):
+
+- `setx LLM_PROVIDER openai_compat`
+- `setx LLM_BASE_URL http://127.0.0.1:8000`
+- `setx LLM_MODEL qwen2.5:7b-instruct`
+
+После этого UI будет использовать твой сервер без привязки к Ollama.
+
+## One-click запуск (Windows)
+
+В корне проекта есть скрипты:
+
+- [start_all.cmd](../start_all.cmd) — проверяет локальную Ollama, подтягивает модель (если нет), запускает AI-AGENT, затем STT.
+- [stop_all.ps1](../stop_all.ps1) — останавливает Docker-сервисы.
