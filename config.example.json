@@ -1,0 +1,45 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 5000
+  },
+  "whisper": {
+    "model": "medium",
+    "device": "cuda",
+    "compute_type": "float16",
+    "beam_size": 1
+  },
+  "llm": {
+    "provider": "ollama",
+    "base_url": "http://localhost:11434",
+    "model": "qwen2.5:7b-instruct",
+    "temperature": 0.4,
+    "num_ctx": 8192,
+    "max_messages": 200,
+    "api_key": ""
+  },
+  "ai_agent": {
+    "host": "127.0.0.1",
+    "port": 7000,
+    "system_prompt": "Отвечай строго по-русски. Не добавляй другие языки или иероглифы.",
+    "ttl_minutes": 15,
+    "cleanup_fragments": true
+  },
+  "voice_generator": {
+    "host": "127.0.0.1",
+    "port": 7001,
+    "url": "http://127.0.0.1:7001",
+    "model_path": "E:/SPEECH TRAINER/VOICE_GENERATOR/voices/ru_RU-irina-medium.onnx",
+    "config_path": "E:/SPEECH TRAINER/VOICE_GENERATOR/voices/ru_RU-irina-medium.onnx.json",
+    "phonemize_exe": "E:/SPEECH TRAINER/VOICE_GENERATOR/piper-phonemize/piper-phonemize/bin/piper_phonemize_exe.exe",
+    "espeak_data": "E:/SPEECH TRAINER/VOICE_GENERATOR/piper-phonemize/piper-phonemize/share/espeak-ng-data",
+    "use_cuda": true,
+    "speaker_id": 0,
+    "length_scale": 1.0,
+    "noise_scale": 0.667,
+    "noise_w": 0.8
+  },
+  "cuda": {
+    "bin_path": "E:/CUDA/bin"
+  }
+}

@@ -1,0 +1,13 @@
+.venv/
+VOICE_GENERATOR/.venv/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.cache/
+.vscode/
+VOICE_GENERATOR/piper-phonemize/
+VOICE_GENERATOR/Voices/
+*.onnx
+*.onnx.json
+config.json
