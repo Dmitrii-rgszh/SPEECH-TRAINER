@@ -3,6 +3,9 @@
     "host": "127.0.0.1",
     "port": 5000
   },
+  "ui": {
+    "avatar_path": "E:/SPEECH TRAINER/CLEAN_AVATARS/MALE/Old_man/Male_55_yo.png"
+  },
   "whisper": {
     "model": "medium",
     "device": "cuda",
@@ -38,6 +41,26 @@
     "length_scale": 1.0,
     "noise_scale": 0.667,
     "noise_w": 0.8
+  },
+  "lip_sync": {
+    "host": "127.0.0.1",
+    "port": 7002,
+    "url": "http://127.0.0.1:7002",
+    "work_dir": "E:/SPEECH TRAINER/CLEAN_AVATARS",
+    "pipeline": "sadtalker",
+    "use_cuda": true,
+    "ffmpeg_path": "C:/ProgramData/chocolatey/bin",
+    "sadtalker_repo": "E:/SPEECH TRAINER/CLEAN_AVATARS/PIPELINE/SadTalker",
+    "musetalk_repo": "E:/SPEECH TRAINER/CLEAN_AVATARS/PIPELINE/MuseTalk",
+    "codeformer_repo": "E:/SPEECH TRAINER/CLEAN_AVATARS/PIPELINE/CodeFormer",
+    "gfpgan_repo": "E:/SPEECH TRAINER/CLEAN_AVATARS/PIPELINE/GFPGAN",
+    "musetalk_version": "v15",
+    "musetalk_unet": "E:/SPEECH TRAINER/CLEAN_AVATARS/PIPELINE/MuseTalk/models/musetalkV15/unet.pth",
+    "musetalk_unet_cfg": "E:/SPEECH TRAINER/CLEAN_AVATARS/PIPELINE/MuseTalk/models/musetalkV15/musetalk.json",
+    "musetalk_tmp_dir": "E:/musetalk_tmp",
+    "enhancer": "none",
+      "face_restorer": "none",
+    "python_exe": "E:/SPEECH TRAINER/LIPSYNC/.venv/Scripts/python.exe"
   },
   "cuda": {
     "bin_path": "E:/CUDA/bin"

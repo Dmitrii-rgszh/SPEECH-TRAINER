@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Речевой тренажер RGSL</title>
-    <link rel="stylesheet" href="/static/style.css?v=4" />
+    <link rel="stylesheet" href="/static/style.css?v=12" />
   </head>
   <body>
     <main class="container">
@@ -27,6 +27,20 @@
       <div class="version">UI v3</div>
 
       <section class="result">
+        <h2>Аватар</h2>
+        <div class="avatar-wrap">
+          <img id="avatarImage" class="avatar-img" src="/avatar" alt="Аватар" />
+          <video
+            id="avatarVideo"
+            class="avatar-video"
+            style="display: none;"
+            autoplay
+            playsinline
+          ></video>
+        </div>
+      </section>
+
+      <section class="result">
         <h2>Чат</h2>
         <div id="chat" class="chat"></div>
       </section>
@@ -37,6 +51,6 @@
       </section>
     </main>
 
-    <script src="/static/app.js?v=14"></script>
+    <script src="/static/app.js?v=23"></script>
   </body>
 </html>

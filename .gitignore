@@ -1,5 +1,6 @@
 .venv/
 VOICE_GENERATOR/.venv/
+LIPSYNC/.venv/
 **/__pycache__/
 **/*.pyc
 **/*.pyo
@@ -7,7 +8,9 @@ VOICE_GENERATOR/.venv/
 **/.cache/
 .vscode/
 VOICE_GENERATOR/piper-phonemize/
+VOICE_GENERATOR/piper-phonemize_windows_amd64.zip
 VOICE_GENERATOR/Voices/
 *.onnx
 *.onnx.json
 config.json
+CLEAN_AVATARS/

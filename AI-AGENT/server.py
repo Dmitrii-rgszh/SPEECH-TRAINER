@@ -43,6 +43,7 @@ def llm_config(cfg: dict) -> dict:
     api_key = str(_env_or(cfg, "LLM_API_KEY", str(llm.get("api_key", ""))))
     temperature = float(_env_or(cfg, "LLM_TEMPERATURE", str(llm.get("temperature", 0.4))))
     num_ctx = int(float(_env_or(cfg, "LLM_NUM_CTX", str(llm.get("num_ctx", 8192)))))
+    num_predict = int(float(_env_or(cfg, "LLM_NUM_PREDICT", str(llm.get("num_predict", 256)))))
     max_messages = int(float(_env_or(cfg, "CHAT_MAX_MESSAGES", str(llm.get("max_messages", 20)))))
 
     return {
@@ -52,6 +53,7 @@ def llm_config(cfg: dict) -> dict:
         "api_key": api_key,
         "temperature": temperature,
         "num_ctx": num_ctx,
+        "num_predict": num_predict,
         "max_messages": max_messages,
     }
 
@@ -212,9 +214,13 @@ def ollama_chat(messages: list[dict[str, str]]) -> str:
         "model": LLM["model"],
         "messages": messages,
         "stream": False,
-        "options": {"temperature": LLM["temperature"], "num_ctx": LLM["num_ctx"]},
+        "options": {
+            "temperature": LLM["temperature"],
+            "num_ctx": LLM["num_ctx"],
+            "num_predict": LLM["num_predict"],
+        },
     }
-    resp = requests.post(f"{base_url}/api/chat", json=payload, timeout=120)
+    resp = requests.post(f"{base_url}/api/chat", json=payload, timeout=300)
     resp.raise_for_status()
     data = resp.json()
     msg = data.get("message") or {}
@@ -240,7 +246,7 @@ def openai_compat_chat(messages: list[dict[str, str]]) -> str:
     last_exc: Exception | None = None
     for url in urls:
         try:
-            resp = requests.post(url, headers=headers, json=payload, timeout=120)
+            resp = requests.post(url, headers=headers, json=payload, timeout=300)
             if resp.status_code == 404:
                 continue
             resp.raise_for_status()

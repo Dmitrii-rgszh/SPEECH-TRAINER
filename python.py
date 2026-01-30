@@ -72,6 +72,10 @@ def env_from_config(cfg: dict) -> dict[str, str]:
     if server.get("port") is not None:
         env["APP_PORT"] = str(int(server["port"]))
 
+    ui = cfg.get("ui", {}) if isinstance(cfg.get("ui", {}), dict) else {}
+    if ui.get("avatar_path"):
+        env["AVATAR_PATH"] = str(ui["avatar_path"])
+
     ai_agent = cfg.get("ai_agent", {}) if isinstance(cfg.get("ai_agent", {}), dict) else {}
     if ai_agent.get("host") and ai_agent.get("port") is not None:
         env["AI_AGENT_URL"] = f"http://{ai_agent['host']}:{int(ai_agent['port'])}"
@@ -79,6 +83,10 @@ def env_from_config(cfg: dict) -> dict[str, str]:
     voice = cfg.get("voice_generator", {}) if isinstance(cfg.get("voice_generator", {}), dict) else {}
     if voice.get("url"):
         env["TTS_URL"] = str(voice["url"])
+
+    lip_sync = cfg.get("lip_sync", {}) if isinstance(cfg.get("lip_sync", {}), dict) else {}
+    if lip_sync.get("url"):
+        env["LIPSYNC_URL"] = str(lip_sync["url"])
 
     return env
 

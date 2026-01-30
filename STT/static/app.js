@@ -26,18 +26,24 @@ let previewInFlight = false;
 let autoRestart = true;
 let userStopped = false;
 let ttsAudio = null;
+const avatarImg = document.getElementById("avatarImage");
+const avatarVideo = document.getElementById("avatarVideo");
+let activeVideoUrl = null;
+let lipSyncAbort = null;
 
 const BASE_SILENCE_THRESHOLD = 0.01;
 const SILENCE_LIMIT_MS = 3000;
 const MAX_RECORDING_MS = 30000;
 const PREVIEW_INTERVAL_MS = 500;
+const MIN_DB_THRESHOLD = -40; // Минимальный уровень громкости в dB (звуки тише игнорируются)
+const MIN_RMS_THRESHOLD = Math.pow(10, MIN_DB_THRESHOLD / 20); // ~0.01 для -40dB
 
 startBtn.addEventListener("click", startRecording);
 stopBtn.addEventListener("click", stopRecording);
 healthBtn.addEventListener("click", checkHealth);
 if (resetChatBtn) resetChatBtn.addEventListener("click", resetChat);
 
-function appendChatMessage(role, text) {
+function appendChatMessage(role, text, showSpinner = false) {
   if (!chatEl) return;
 
   const row = document.createElement("div");
@@ -45,7 +51,14 @@ function appendChatMessage(role, text) {
 
   const bubble = document.createElement("div");
   bubble.className = "chat-bubble";
-  bubble.textContent = text || "(пусто)";
+  
+  if (showSpinner) {
+    const spinner = document.createElement("div");
+    spinner.className = "spinner";
+    bubble.appendChild(spinner);
+  } else {
+    bubble.textContent = text || "(пусто)";
+  }
 
   row.appendChild(bubble);
   chatEl.appendChild(row);
@@ -57,22 +70,33 @@ function setLivePreview(text) {
   livePreviewEl.textContent = text || "—";
 }
 
-async function playTts(text) {
+async function playTts(text, placeholder = null) {
   const clean = (text || "").trim();
   if (!clean) return;
 
   try {
+    // 1. Получаем TTS аудио
     const resp = await fetch("/tts", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ text: clean }),
     });
     if (!resp.ok) {
+      if (placeholder) placeholder.textContent = clean;
       return;
     }
-    const blob = await resp.blob();
-    const url = URL.createObjectURL(blob);
+    const ttsBlob = await resp.blob();
+    const ttsUrl = URL.createObjectURL(ttsBlob);
 
+    // 2. Генерируем LipSync видео (ждём завершения)
+    let videoUrl = null;
+    try {
+      videoUrl = await requestLipSyncAndWait(ttsBlob);
+    } catch (e) {
+      console.error("LipSync failed, playing audio only:", e);
+    }
+
+    // 3. Очищаем предыдущее аудио
     if (ttsAudio) {
       try {
         ttsAudio.pause();
@@ -80,13 +104,152 @@ async function playTts(text) {
       if (ttsAudio.src) URL.revokeObjectURL(ttsAudio.src);
     }
 
-    ttsAudio = new Audio(url);
-    ttsAudio.onended = () => {
-      URL.revokeObjectURL(url);
-    };
-    await ttsAudio.play();
-  } catch (_) {
-    // ignore TTS errors silently
+    // 4. Показываем текст в чате
+    if (placeholder) placeholder.textContent = clean;
+
+    // 5. Показываем видео и воспроизводим аудио синхронно
+    if (videoUrl) {
+      showAvatarVideoWithAudio(videoUrl, ttsUrl);
+    } else {
+      // Нет видео - только аудио
+      ttsAudio = new Audio(ttsUrl);
+      ttsAudio.onended = () => {
+        URL.revokeObjectURL(ttsUrl);
+        showAvatarImage();
+      };
+      await ttsAudio.play();
+    }
+  } catch (e) {
+    console.error("TTS error:", e);
+    if (placeholder) placeholder.textContent = clean;
+  }
+}
+
+function showAvatarVideoWithAudio(videoUrl, audioUrl) {
+  if (!avatarVideo || !avatarImg) return;
+  
+  if (activeVideoUrl && activeVideoUrl !== videoUrl) {
+    URL.revokeObjectURL(activeVideoUrl);
+  }
+  activeVideoUrl = videoUrl;
+  
+  avatarVideo.oncanplay = null;
+  avatarVideo.onerror = null;
+  avatarVideo.onloadeddata = null;
+  avatarVideo.onended = null;
+  
+  avatarVideo.src = videoUrl;
+  
+  // Создаём аудио
+  if (ttsAudio) {
+    try { ttsAudio.pause(); } catch (_) {}
+    if (ttsAudio.src) URL.revokeObjectURL(ttsAudio.src);
+  }
+  ttsAudio = new Audio(audioUrl);
+  
+  avatarVideo.onloadeddata = () => {
+    console.log("Video loaded, showing with audio...");
+    avatarImg.style.display = "none";
+    avatarVideo.style.cssText = "display: block !important; position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 999;";
+    
+    // Запускаем видео и аудио синхронно
+    avatarVideo.play().catch((e) => console.error("Video play error:", e));
+    ttsAudio.play().catch((e) => console.error("Audio play error:", e));
+  };
+  
+  avatarVideo.onended = () => {
+    console.log("Video ended");
+    showAvatarImage();
+    URL.revokeObjectURL(videoUrl);
+  };
+  
+  ttsAudio.onended = () => {
+    URL.revokeObjectURL(audioUrl);
+  };
+  
+  avatarVideo.onerror = (e) => {
+    console.error("Video error:", avatarVideo.error);
+    // Fallback: воспроизводим только аудио
+    ttsAudio.play().catch(() => {});
+    showAvatarImage();
+  };
+  
+  avatarVideo.load();
+}
+
+function showAvatarVideo(url) {
+  if (!avatarVideo || !avatarImg) return;
+  if (activeVideoUrl && activeVideoUrl !== url) {
+    URL.revokeObjectURL(activeVideoUrl);
+  }
+  activeVideoUrl = url;
+  
+  // Clear previous handlers
+  avatarVideo.oncanplay = null;
+  avatarVideo.onerror = null;
+  avatarVideo.onloadeddata = null;
+  
+  avatarVideo.src = url;
+  
+  avatarVideo.onloadeddata = () => {
+    console.log("Video loaded, showing...");
+    avatarImg.style.display = "none";
+    avatarVideo.style.cssText = "display: block !important; position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; z-index: 999;";
+    avatarVideo.play().then(() => {
+      console.log("Video playing!");
+    }).catch((e) => console.error("Play error:", e));
+  };
+  
+  avatarVideo.onerror = (e) => {
+    console.error("Video error:", avatarVideo.error);
+    showAvatarImage();
+  };
+  
+  avatarVideo.load();
+}
+
+function showAvatarImage() {
+  if (!avatarVideo || !avatarImg) return;
+  if (activeVideoUrl) {
+    URL.revokeObjectURL(activeVideoUrl);
+    activeVideoUrl = null;
+  }
+  avatarVideo.pause();
+  avatarVideo.removeAttribute("src");
+  avatarVideo.style.display = "none";
+  avatarImg.style.display = "block";
+}
+
+async function requestLipSyncAndWait(audioBlob) {
+  if (!audioBlob) return null;
+  console.log("Starting lipsync request...");
+
+  const formData = new FormData();
+  formData.append("audio", audioBlob, "tts.wav");
+
+  const resp = await fetch("/lipsync", {
+    method: "POST",
+    body: formData,
+  });
+  console.log("Lipsync response status:", resp.status);
+  if (!resp.ok) {
+    throw new Error("Lipsync failed: " + resp.status);
+  }
+  const blob = await resp.blob();
+  console.log("Lipsync blob size:", blob.size, "type:", blob.type);
+  const url = URL.createObjectURL(blob);
+  console.log("Lipsync video URL:", url);
+  return url;
+}
+
+// Legacy function for compatibility
+async function requestLipSync(audioBlob) {
+  try {
+    const url = await requestLipSyncAndWait(audioBlob);
+    if (url) showAvatarVideo(url);
+  } catch (e) {
+    console.error("Lipsync error:", e);
+    showAvatarImage();
   }
 }
 
@@ -151,32 +314,45 @@ async function startRecording() {
     if (!recording) return;
 
     const input = event.inputBuffer.getChannelData(0);
-    audioChunks.push(new Float32Array(input));
-
     const rms = Math.sqrt(input.reduce((sum, v) => sum + v * v, 0) / input.length);
 
+    // Калибровка шума (всегда выполняется первые 5 буферов)
     if (!calibrated) {
       noiseFloor += rms;
       calibrationSamples += 1;
       if (calibrationSamples >= 5) {
         noiseFloor = noiseFloor / calibrationSamples;
         calibrated = true;
+        console.log(`[Audio] Calibrated. Noise floor: ${noiseFloor.toFixed(4)}, Min threshold: ${MIN_RMS_THRESHOLD.toFixed(4)}`);
       }
       return;
     }
 
     const threshold = Math.max(BASE_SILENCE_THRESHOLD, noiseFloor * 2.5);
+    
+    // Фильтр фонового шума: игнорируем звуки тише MIN_RMS_THRESHOLD до начала речи
+    const isLoudEnough = rms >= MIN_RMS_THRESHOLD;
+    const isAboveThreshold = rms > threshold;
 
-    if (rms > threshold) {
+    if (isAboveThreshold && isLoudEnough) {
+      // Голос обнаружен
       hasSpoken = true;
       silenceMs = 0;
       lastVoiceMs = performance.now();
-    } else if (hasSpoken) {
-      const bufferDurationMs = (input.length / audioContext.sampleRate) * 1000;
-      silenceMs += bufferDurationMs;
+    }
+    
+    // Записываем аудио только если уже начали говорить
+    if (hasSpoken) {
+      audioChunks.push(new Float32Array(input));
+      
+      // Если сейчас тихо - считаем тишину
+      if (!isAboveThreshold) {
+        const bufferDurationMs = (input.length / audioContext.sampleRate) * 1000;
+        silenceMs += bufferDurationMs;
 
-      if (performance.now() - lastVoiceMs >= SILENCE_LIMIT_MS) {
-        stopRecording();
+        if (performance.now() - lastVoiceMs >= SILENCE_LIMIT_MS) {
+          stopRecording();
+        }
       }
     }
 
@@ -299,12 +475,13 @@ async function sendAudio(blob, { preview } = { preview: false }) {
 
       if (finalText.length > 0) {
         appendChatMessage("user", finalText);
-        appendChatMessage("assistant", "...");
+        appendChatMessage("assistant", null, true); // показать спиннер
         const placeholder = chatEl?.lastElementChild?.querySelector?.(
           ".chat-bubble"
         );
 
         try {
+          statusEl.textContent = "Думаю...";
           const chatResp = await fetch("/chat", {
             method: "POST",
             headers: { "content-type": "application/json" },
@@ -319,8 +496,9 @@ async function sendAudio(blob, { preview } = { preview: false }) {
           }
           chatSessionId = chatData.session_id;
           const replyText = chatData.reply || "(пусто)";
-          if (placeholder) placeholder.textContent = replyText;
-          playTts(replyText);
+          // Не показываем текст сразу - передаём placeholder в playTts
+          statusEl.textContent = "Генерация видео...";
+          await playTts(replyText, placeholder);
         } catch (e) {
           if (placeholder)
             placeholder.textContent = "Ошибка LLM: " + (e?.message || String(e));

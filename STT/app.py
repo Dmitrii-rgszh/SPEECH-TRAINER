@@ -8,7 +8,7 @@ import traceback
 import webbrowser
 import wave
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_file
 from faster_whisper import WhisperModel
 
 import requests
@@ -35,6 +35,8 @@ model_device = None
 # --- AI-AGENT ---
 AI_AGENT_URL = os.getenv("AI_AGENT_URL", "http://127.0.0.1:7000")
 TTS_URL = os.getenv("TTS_URL", "http://127.0.0.1:7001")
+LIPSYNC_URL = os.getenv("LIPSYNC_URL", "http://127.0.0.1:7002")
+AVATAR_PATH = os.getenv("AVATAR_PATH", "E:/SPEECH TRAINER/CLEAN_AVATARS/MALE/Old_man/Male_55_yo.png")
 
 
 def ai_agent_health(timeout_s: float = 1.5) -> dict:
@@ -49,6 +51,15 @@ def ai_agent_health(timeout_s: float = 1.5) -> dict:
 def tts_health(timeout_s: float = 1.5) -> dict:
     try:
         resp = requests.get(f"{TTS_URL.rstrip('/')}/health", timeout=timeout_s)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception:
+        return {"status": "error"}
+
+
+def lipsync_health(timeout_s: float = 1.5) -> dict:
+    try:
+        resp = requests.get(f"{LIPSYNC_URL.rstrip('/')}/health", timeout=timeout_s)
         resp.raise_for_status()
         return resp.json()
     except Exception:
@@ -98,6 +109,13 @@ def favicon():
     return ("", 204)
 
 
+@app.get("/avatar")
+def avatar():
+    if AVATAR_PATH and os.path.exists(AVATAR_PATH):
+        return send_file(AVATAR_PATH, mimetype="image/png", max_age=0)
+    return ("", 404)
+
+
 @app.after_request
 def add_no_cache_headers(response):
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
@@ -109,6 +127,7 @@ def add_no_cache_headers(response):
 def health():
     agent_health = ai_agent_health()
     voice_health = tts_health()
+    lipsync = lipsync_health()
     return jsonify(
         {
             "status": "ok",
@@ -122,6 +141,11 @@ def health():
                 "ok": voice_health.get("status") == "ok",
                 "url": TTS_URL,
                 "error": voice_health.get("error"),
+            },
+            "lip_sync": {
+                "ok": lipsync.get("status") == "ok",
+                "url": LIPSYNC_URL,
+                "error": lipsync.get("error"),
             },
         }
     )
@@ -189,7 +213,7 @@ def chat():
         resp = requests.post(
             f"{AI_AGENT_URL.rstrip('/')}/chat",
             json=data,
-            timeout=120,
+            timeout=300,
         )
         content_type = resp.headers.get("content-type", "")
         if "application/json" in content_type:
@@ -241,6 +265,42 @@ def tts():
             jsonify(
                 {
                     "error": "VOICE_GENERATOR недоступен. Запусти сервис на http://127.0.0.1:7001",
+                }
+            ),
+            503,
+        )
+
+
+@app.post("/lipsync")
+def lipsync():
+    if "audio" not in request.files:
+        return jsonify({"error": "audio file is required"}), 400
+
+    audio = request.files["audio"]
+    if not audio.filename:
+        return jsonify({"error": "empty filename"}), 400
+
+    try:
+        # Read audio data first to avoid stream issues
+        audio_data = audio.read()
+        files = {"audio": (audio.filename, audio_data, audio.mimetype or "audio/wav")}
+        resp = requests.post(
+            f"{LIPSYNC_URL.rstrip('/')}/generate",
+            files=files,
+            timeout=900,
+        )
+        if not resp.ok:
+            content_type = resp.headers.get("content-type", "")
+            if "application/json" in content_type:
+                return jsonify(resp.json()), resp.status_code
+            return jsonify({"error": resp.text}), resp.status_code
+
+        return resp.content, 200, {"Content-Type": "video/mp4"}
+    except requests.exceptions.ConnectionError:
+        return (
+            jsonify(
+                {
+                    "error": "LIPSYNC недоступен. Запусти сервис на http://127.0.0.1:7002",
                 }
             ),
             503,

@@ -56,7 +56,61 @@ button:disabled {
   white-space: pre-wrap;
 }
 
-.chat {
+.avatar-wrap {
+  position: relative;
+  width: 220px;
+  height: 220px;
+  margin: 12px auto 4px;
+  border-radius: 50%;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  background: #e5e7eb;
+}
+
+.avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.avatar-video {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: none;
+  background: #fff;
+  z-index: 10;
+}
+
+.avatar-video::-webkit-media-controls {
+  display: none !important;
+}
+
+.avatar-video::-webkit-media-controls-enclosure {
+  display: none !important;
+}
+
+.avatar-video::-webkit-media-controls-panel {
+  display: none !important;
+}
+
+.hidden {
+  display: none;
+}
+
+.avatar-video.hidden {
+  display: none;
+}
+
+.avatar-img.hidden {
+  display: none;
+}
+
+.chat-log {
   height: 320px;
   overflow: auto;
   padding: 12px;
@@ -102,4 +156,21 @@ button:disabled {
 
 .hint {
   color: #4b5563;
+}
+
+/* Спиннер загрузки */
+.spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid #e5e7eb;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

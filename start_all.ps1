@@ -181,6 +181,34 @@ try {
   Write-Host "Failed to start VOICE_GENERATOR server. Run manually: $py .\VOICE_GENERATOR\app.py" -ForegroundColor Yellow
 }
 
+Write-Step "Starting LIPSYNC server"
+try {
+  Write-Step "Installing LIPSYNC dependencies"
+  $lipVenv = Join-Path $root "LIPSYNC\.venv"
+  $lipPy = Join-Path $lipVenv "Scripts\python.exe"
+  if (!(Test-Path -LiteralPath $lipPy)) {
+    Write-Step "Creating LIPSYNC venv (Python 3.10)"
+    & py -3.10 -m venv $lipVenv
+  }
+  & $lipPy -m pip install -r ".\LIPSYNC\requirements.txt" | Out-Host
+  
+  # Start LIPSYNC server (original version)
+  $lipLogDir = Join-Path $root "LIPSYNC"
+  $lipOutLog = Join-Path $lipLogDir "server_out.log"
+  $lipErrLog = Join-Path $lipLogDir "server_err.log"
+  
+  Write-Host "LIPSYNC logs: $lipOutLog, $lipErrLog" -ForegroundColor Gray
+  Start-Process -FilePath $lipPy -ArgumentList "app.py" `
+    -WorkingDirectory $lipLogDir `
+    -WindowStyle Hidden `
+    -RedirectStandardOutput $lipOutLog `
+    -RedirectStandardError $lipErrLog
+  
+  Write-Host "LIPSYNC server started (original)" -ForegroundColor Green
+} catch {
+  Write-Host "Failed to start LIPSYNC server. Run manually: $lipPy .\LIPSYNC\app.py" -ForegroundColor Yellow
+}
+
 Write-Step "Waiting for AI-AGENT health"
 $agentUrl = "http://127.0.0.1:7000/health"
 $deadline2 = (Get-Date).AddSeconds(30)
@@ -194,6 +222,24 @@ while ($true) {
     break
   }
   Start-Sleep -Seconds 1
+}
+
+Write-Step "Waiting for LIPSYNC server health"
+$lipUrl = "http://127.0.0.1:7002/health"
+$deadline3 = (Get-Date).AddSeconds(60)  # LIPSYNC needs more time to load models
+while ($true) {
+  try {
+    $resp = Invoke-RestMethod -Uri $lipUrl -TimeoutSec 2
+    if ($resp.status -eq "ok") {
+      Write-Host "LIPSYNC ready (models loaded)" -ForegroundColor Green
+      break
+    }
+  } catch {}
+  if ((Get-Date) -gt $deadline3) {
+    Write-Host "LIPSYNC did not respond at $lipUrl (check server_out.log)" -ForegroundColor Yellow
+    break
+  }
+  Start-Sleep -Seconds 2
 }
 
 Write-Step "Starting STT server (python.py)"
