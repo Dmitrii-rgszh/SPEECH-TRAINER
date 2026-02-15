@@ -14,3 +14,31 @@ VOICE_GENERATOR/Voices/
 *.onnx.json
 config.json
 CLEAN_AVATARS/
+
+# Runtime logs and temp artifacts
+*.log
+*.tmp
+server_*.log
+*_err.log
+*_out.log
+tmp_*.json
+tmp_*.txt
+
+# Local databases and generated outputs
+data/app.db
+TALKING_AVATAR/outputs/
+TALKING_AVATAR/temp/
+LIPSYNC/gfpgan/
+gfpgan/
+
+# Downloaded model weights/caches (keep code only in git)
+VOICE_GENERATOR/XTTS-v2/
+VOICE_GENERATOR/tts/
+VOICE_GENERATOR/tts_models--multilingual--multi-dataset--xtts_v2/
+TALKING_AVATAR/hf_cache/
+
+# Optional embedded repos / model folders
+SPEECH-TRAINER/
+TALKING_AVATAR/models/liveportrait/
+TALKING_AVATAR/models/liveportrait_repo/
+TALKING_AVATAR/models/wav2lip/

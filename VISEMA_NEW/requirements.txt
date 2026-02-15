@@ -1,0 +1,43 @@
+# VISEMA 2.0 - Production Talking Avatar Pipeline
+# Python 3.10+, CUDA 12.1+, FFmpeg 4.4+
+
+# === Core Framework ===
+Flask==3.0.0
+Flask-CORS==4.0.0
+Werkzeug==3.0.0
+
+# === Deep Learning ===
+torch==2.1.0
+torchvision==0.16.0
+torchaudio==2.1.0
+
+# === Computer Vision ===
+opencv-python==4.8.0.74
+Pillow==10.0.0
+scikit-image==0.21.0
+
+# === Audio Processing ===
+librosa==0.10.0
+scipy==1.11.3
+numpy==1.24.3
+pydub==0.25.1
+
+# === Video & Media ===
+imageio==2.32.0
+imageio-ffmpeg==0.4.9
+av==10.0.0
+
+# === Models (требуют ручной установки) ===
+# LivePortrait: pip install git+https://github.com/KwaiVGI/LivePortrait.git
+# Wav2Lip: git clone https://github.com/Rudrabha/Wav2Lip.git && cd Wav2Lip && pip install -r requirements.txt
+
+# === Utilities ===
+tqdm==4.66.1
+requests==2.31.0
+python-dotenv==1.0.0
+pydantic==2.4.2
+
+# === Optional (для advanced features) ===
+# celery==5.3.2  # async task queue
+# redis==5.0.0   # task broker
+# gunicorn==21.2.0  # production WSGI

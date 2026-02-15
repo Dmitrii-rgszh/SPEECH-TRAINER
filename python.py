@@ -72,6 +72,22 @@ def env_from_config(cfg: dict) -> dict[str, str]:
     if server.get("port") is not None:
         env["APP_PORT"] = str(int(server["port"]))
 
+    smtp = cfg.get("smtp", {}) if isinstance(cfg.get("smtp", {}), dict) else {}
+    if smtp.get("host"):
+        env["SMTP_HOST"] = str(smtp["host"])
+    if smtp.get("port") is not None:
+        env["SMTP_PORT"] = str(int(smtp["port"]))
+    if smtp.get("user"):
+        env["SMTP_USER"] = str(smtp["user"])
+    if smtp.get("password"):
+        env["SMTP_PASSWORD"] = str(smtp["password"])
+    if smtp.get("from"):
+        env["SMTP_FROM"] = str(smtp["from"])
+    if smtp.get("use_ssl") is not None:
+        env["SMTP_USE_SSL"] = "1" if bool(smtp["use_ssl"]) else "0"
+    if smtp.get("public_base_url"):
+        env["PUBLIC_BASE_URL"] = str(smtp["public_base_url"])
+
     ui = cfg.get("ui", {}) if isinstance(cfg.get("ui", {}), dict) else {}
     if ui.get("avatar_path"):
         env["AVATAR_PATH"] = str(ui["avatar_path"])
@@ -87,6 +103,10 @@ def env_from_config(cfg: dict) -> dict[str, str]:
     lip_sync = cfg.get("lip_sync", {}) if isinstance(cfg.get("lip_sync", {}), dict) else {}
     if lip_sync.get("url"):
         env["LIPSYNC_URL"] = str(lip_sync["url"])
+
+    lip_sync_legacy = cfg.get("lip_sync_legacy", {}) if isinstance(cfg.get("lip_sync_legacy", {}), dict) else {}
+    if lip_sync_legacy.get("url"):
+        env["LIPSYNC_LEGACY_URL"] = str(lip_sync_legacy["url"])
 
     return env
 

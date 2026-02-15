@@ -1,0 +1,284 @@
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on http://127.0.0.1:7002
+Press CTRL+C to quit
+127.0.0.1 - - [28/Jan/2026 16:41:41] "GET /health HTTP/1.1" 200 -
+[2026-01-28 16:49:31,733] ERROR in app: Exception on /generate [POST]
+Traceback (most recent call last):
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\flask\app.py", line 1473, in wsgi_app
+    response = self.full_dispatch_request()
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\flask\app.py", line 882, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\flask\app.py", line 880, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\flask\app.py", line 865, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+  File "E:\SPEECH TRAINER\LIPSYNC\app.py", line 347, in generate
+    )
+  File "E:\SPEECH TRAINER\LIPSYNC\app.py", line 246, in _run_musetalk
+    ]
+  File "E:\SPEECH TRAINER\LIPSYNC\app.py", line 122, in _run_command
+    )
+RuntimeError:  None,
+  File "E:\Python310\lib\runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "E:\SPEECH TRAINER\CLEAN_AVATARS\PIPELINE\MuseTalk\scripts\inference.py", line 21, in <module>
+    from musetalk.utils.preprocessing import get_landmark_and_bbox, read_imgs, coord_placeholder
+  File "E:\SPEECH TRAINER\CLEAN_AVATARS\PIPELINE\MuseTalk\musetalk\utils\preprocessing.py", line 19, in <module>
+    model = init_model(config_file, checkpoint_file, device=device)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmpose\apis\inference.py", line 103, in init_model
+    model = build_pose_estimator(config.model)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmpose\models\builder.py", line 35, in build_pose_estimator
+    return POSE_ESTIMATORS.build(cfg)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\registry.py", line 570, in build
+    return self.build_func(cfg, *args, **kwargs, registry=self)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\build_functions.py", line 232, in build_model_from_cfg
+    return build_from_cfg(cfg, registry, default_args)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\build_functions.py", line 121, in build_from_cfg
+    obj = obj_cls(**args)  # type: ignore
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmpose\models\pose_estimators\topdown.py", line 47, in __init__
+    super().__init__(
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmpose\models\pose_estimators\base.py", line 47, in __init__
+    self.backbone = MODELS.build(backbone)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\registry.py", line 570, in build
+    return self.build_func(cfg, *args, **kwargs, registry=self)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\build_functions.py", line 232, in build_model_from_cfg
+    return build_from_cfg(cfg, registry, default_args)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\build_functions.py", line 98, in build_from_cfg
+    obj_cls = registry.get(obj_type)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\registry.py", line 451, in get
+    self.import_from_location()
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\registry.py", line 376, in import_from_location
+    import_module(loc)
+  File "E:\Python310\lib\importlib\__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmdet\models\__init__.py", line 2, in <module>
+    from .backbones import *  # noqa: F401,F403
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmdet\models\backbones\__init__.py", line 2, in <module>
+    from .csp_darknet import CSPDarknet
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmdet\models\backbones\csp_darknet.py", line 11, in <module>
+    from ..layers import CSPLayer
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmdet\models\layers\__init__.py", line 3, in <module>
+    from .bbox_nms import fast_nms, multiclass_nms
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmdet\models\layers\bbox_nms.py", line 5, in <module>
+    from mmcv.ops.nms import batched_nms
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmcv\ops\__init__.py", line 2, in <module>
+    from .active_rotated_filter import active_rotated_filter
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmcv\ops\active_rotated_filter.py", line 10, in <module>
+    ext_module = ext_loader.load_ext(
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmcv\utils\ext_loader.py", line 13, in load_ext
+    ext = importlib.import_module('mmcv.' + name)
+  File "E:\Python310\lib\importlib\__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+ModuleNotFoundError: No module named 'mmcv._ext'
+
+127.0.0.1 - - [28/Jan/2026 16:49:31] "POST /generate HTTP/1.1" 500 -
+[2026-01-28 16:52:32,142] ERROR in app: Exception on /generate [POST]
+Traceback (most recent call last):
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\flask\app.py", line 1473, in wsgi_app
+    response = self.full_dispatch_request()
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\flask\app.py", line 882, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\flask\app.py", line 880, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\flask\app.py", line 865, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+  File "E:\SPEECH TRAINER\LIPSYNC\app.py", line 347, in generate
+    )
+  File "E:\SPEECH TRAINER\LIPSYNC\app.py", line 246, in _run_musetalk
+    ]
+  File "E:\SPEECH TRAINER\LIPSYNC\app.py", line 122, in _run_command
+    )
+RuntimeError:  None,
+  File "E:\Python310\lib\runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "E:\SPEECH TRAINER\CLEAN_AVATARS\PIPELINE\MuseTalk\scripts\inference.py", line 21, in <module>
+    from musetalk.utils.preprocessing import get_landmark_and_bbox, read_imgs, coord_placeholder
+  File "E:\SPEECH TRAINER\CLEAN_AVATARS\PIPELINE\MuseTalk\musetalk\utils\preprocessing.py", line 19, in <module>
+    model = init_model(config_file, checkpoint_file, device=device)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmpose\apis\inference.py", line 103, in init_model
+    model = build_pose_estimator(config.model)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmpose\models\builder.py", line 35, in build_pose_estimator
+    return POSE_ESTIMATORS.build(cfg)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\registry.py", line 570, in build
+    return self.build_func(cfg, *args, **kwargs, registry=self)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\build_functions.py", line 232, in build_model_from_cfg
+    return build_from_cfg(cfg, registry, default_args)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\build_functions.py", line 121, in build_from_cfg
+    obj = obj_cls(**args)  # type: ignore
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmpose\models\pose_estimators\topdown.py", line 47, in __init__
+    super().__init__(
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmpose\models\pose_estimators\base.py", line 47, in __init__
+    self.backbone = MODELS.build(backbone)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\registry.py", line 570, in build
+    return self.build_func(cfg, *args, **kwargs, registry=self)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\build_functions.py", line 232, in build_model_from_cfg
+    return build_from_cfg(cfg, registry, default_args)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\build_functions.py", line 98, in build_from_cfg
+    obj_cls = registry.get(obj_type)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\registry.py", line 451, in get
+    self.import_from_location()
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\registry.py", line 376, in import_from_location
+    import_module(loc)
+  File "E:\Python310\lib\importlib\__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmdet\models\__init__.py", line 2, in <module>
+    from .backbones import *  # noqa: F401,F403
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmdet\models\backbones\__init__.py", line 2, in <module>
+    from .csp_darknet import CSPDarknet
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmdet\models\backbones\csp_darknet.py", line 11, in <module>
+    from ..layers import CSPLayer
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmdet\models\layers\__init__.py", line 3, in <module>
+    from .bbox_nms import fast_nms, multiclass_nms
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmdet\models\layers\bbox_nms.py", line 5, in <module>
+    from mmcv.ops.nms import batched_nms
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmcv\ops\__init__.py", line 2, in <module>
+    from .active_rotated_filter import active_rotated_filter
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmcv\ops\active_rotated_filter.py", line 10, in <module>
+    ext_module = ext_loader.load_ext(
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmcv\utils\ext_loader.py", line 13, in load_ext
+    ext = importlib.import_module('mmcv.' + name)
+  File "E:\Python310\lib\importlib\__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+ModuleNotFoundError: No module named 'mmcv._ext'
+
+127.0.0.1 - - [28/Jan/2026 16:52:32] "POST /generate HTTP/1.1" 500 -
+[2026-01-28 16:54:35,483] ERROR in app: Exception on /generate [POST]
+Traceback (most recent call last):
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\flask\app.py", line 1473, in wsgi_app
+    response = self.full_dispatch_request()
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\flask\app.py", line 882, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\flask\app.py", line 880, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\flask\app.py", line 865, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+  File "E:\SPEECH TRAINER\LIPSYNC\app.py", line 347, in generate
+    )
+  File "E:\SPEECH TRAINER\LIPSYNC\app.py", line 246, in _run_musetalk
+    ]
+  File "E:\SPEECH TRAINER\LIPSYNC\app.py", line 122, in _run_command
+    )
+RuntimeError:  None,
+  File "E:\Python310\lib\runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "E:\SPEECH TRAINER\CLEAN_AVATARS\PIPELINE\MuseTalk\scripts\inference.py", line 21, in <module>
+    from musetalk.utils.preprocessing import get_landmark_and_bbox, read_imgs, coord_placeholder
+  File "E:\SPEECH TRAINER\CLEAN_AVATARS\PIPELINE\MuseTalk\musetalk\utils\preprocessing.py", line 19, in <module>
+    model = init_model(config_file, checkpoint_file, device=device)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmpose\apis\inference.py", line 103, in init_model
+    model = build_pose_estimator(config.model)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmpose\models\builder.py", line 35, in build_pose_estimator
+    return POSE_ESTIMATORS.build(cfg)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\registry.py", line 570, in build
+    return self.build_func(cfg, *args, **kwargs, registry=self)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\build_functions.py", line 232, in build_model_from_cfg
+    return build_from_cfg(cfg, registry, default_args)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\build_functions.py", line 121, in build_from_cfg
+    obj = obj_cls(**args)  # type: ignore
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmpose\models\pose_estimators\topdown.py", line 47, in __init__
+    super().__init__(
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmpose\models\pose_estimators\base.py", line 47, in __init__
+    self.backbone = MODELS.build(backbone)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\registry.py", line 570, in build
+    return self.build_func(cfg, *args, **kwargs, registry=self)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\build_functions.py", line 232, in build_model_from_cfg
+    return build_from_cfg(cfg, registry, default_args)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\build_functions.py", line 98, in build_from_cfg
+    obj_cls = registry.get(obj_type)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\registry.py", line 451, in get
+    self.import_from_location()
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\registry.py", line 376, in import_from_location
+    import_module(loc)
+  File "E:\Python310\lib\importlib\__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmdet\models\__init__.py", line 2, in <module>
+    from .backbones import *  # noqa: F401,F403
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmdet\models\backbones\__init__.py", line 2, in <module>
+    from .csp_darknet import CSPDarknet
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmdet\models\backbones\csp_darknet.py", line 11, in <module>
+    from ..layers import CSPLayer
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmdet\models\layers\__init__.py", line 3, in <module>
+    from .bbox_nms import fast_nms, multiclass_nms
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmdet\models\layers\bbox_nms.py", line 5, in <module>
+    from mmcv.ops.nms import batched_nms
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmcv\ops\__init__.py", line 2, in <module>
+    from .active_rotated_filter import active_rotated_filter
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmcv\ops\active_rotated_filter.py", line 10, in <module>
+    ext_module = ext_loader.load_ext(
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmcv\utils\ext_loader.py", line 13, in load_ext
+    ext = importlib.import_module('mmcv.' + name)
+  File "E:\Python310\lib\importlib\__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+ModuleNotFoundError: No module named 'mmcv._ext'
+
+127.0.0.1 - - [28/Jan/2026 16:54:35] "POST /generate HTTP/1.1" 500 -
+[2026-01-28 17:02:22,654] ERROR in app: Exception on /generate [POST]
+Traceback (most recent call last):
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\flask\app.py", line 1473, in wsgi_app
+    response = self.full_dispatch_request()
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\flask\app.py", line 882, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\flask\app.py", line 880, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\flask\app.py", line 865, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+  File "E:\SPEECH TRAINER\LIPSYNC\app.py", line 347, in generate
+    )
+  File "E:\SPEECH TRAINER\LIPSYNC\app.py", line 246, in _run_musetalk
+    ]
+  File "E:\SPEECH TRAINER\LIPSYNC\app.py", line 122, in _run_command
+    )
+RuntimeError:  None,
+  File "E:\Python310\lib\runpy.py", line 86, in _run_code
+    exec(code, run_globals)
+  File "E:\SPEECH TRAINER\CLEAN_AVATARS\PIPELINE\MuseTalk\scripts\inference.py", line 21, in <module>
+    from musetalk.utils.preprocessing import get_landmark_and_bbox, read_imgs, coord_placeholder
+  File "E:\SPEECH TRAINER\CLEAN_AVATARS\PIPELINE\MuseTalk\musetalk\utils\preprocessing.py", line 19, in <module>
+    model = init_model(config_file, checkpoint_file, device=device)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmpose\apis\inference.py", line 103, in init_model
+    model = build_pose_estimator(config.model)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmpose\models\builder.py", line 35, in build_pose_estimator
+    return POSE_ESTIMATORS.build(cfg)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\registry.py", line 570, in build
+    return self.build_func(cfg, *args, **kwargs, registry=self)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\build_functions.py", line 232, in build_model_from_cfg
+    return build_from_cfg(cfg, registry, default_args)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\build_functions.py", line 121, in build_from_cfg
+    obj = obj_cls(**args)  # type: ignore
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmpose\models\pose_estimators\topdown.py", line 47, in __init__
+    super().__init__(
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmpose\models\pose_estimators\base.py", line 47, in __init__
+    self.backbone = MODELS.build(backbone)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\registry.py", line 570, in build
+    return self.build_func(cfg, *args, **kwargs, registry=self)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\build_functions.py", line 232, in build_model_from_cfg
+    return build_from_cfg(cfg, registry, default_args)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\build_functions.py", line 98, in build_from_cfg
+    obj_cls = registry.get(obj_type)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\registry.py", line 451, in get
+    self.import_from_location()
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmengine\registry\registry.py", line 376, in import_from_location
+    import_module(loc)
+  File "E:\Python310\lib\importlib\__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmdet\models\__init__.py", line 2, in <module>
+    from .backbones import *  # noqa: F401,F403
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmdet\models\backbones\__init__.py", line 2, in <module>
+    from .csp_darknet import CSPDarknet
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmdet\models\backbones\csp_darknet.py", line 11, in <module>
+    from ..layers import CSPLayer
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmdet\models\layers\__init__.py", line 3, in <module>
+    from .bbox_nms import fast_nms, multiclass_nms
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmdet\models\layers\bbox_nms.py", line 5, in <module>
+    from mmcv.ops.nms import batched_nms
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmcv\ops\__init__.py", line 2, in <module>
+    from .active_rotated_filter import active_rotated_filter
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmcv\ops\active_rotated_filter.py", line 10, in <module>
+    ext_module = ext_loader.load_ext(
+  File "E:\SPEECH TRAINER\LIPSYNC\.venv\lib\site-packages\mmcv\utils\ext_loader.py", line 13, in load_ext
+    ext = importlib.import_module('mmcv.' + name)
+  File "E:\Python310\lib\importlib\__init__.py", line 126, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+ModuleNotFoundError: No module named 'mmcv._ext'
+
+127.0.0.1 - - [28/Jan/2026 17:02:22] "POST /generate HTTP/1.1" 500 -

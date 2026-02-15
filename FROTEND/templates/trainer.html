@@ -4,9 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Речевой тренажер RGSL</title>
-    <link rel="stylesheet" href="/static/style.css?v=12" />
+    <link rel="stylesheet" href="/static/trainer.css?v=1" />
   </head>
   <body>
+    <div class="left-logo" aria-hidden="true">
+      <img src="/static/assets/logo/logo.svg" alt="" />
+    </div>
     <main class="container">
       <h1>Речевой тренажер RGSL</h1>
       <p class="hint">
@@ -19,10 +22,29 @@
         <button id="startBtn">Старт</button>
         <button id="stopBtn" disabled>Стоп</button>
         <button id="healthBtn">Проверить связь</button>
+        <select id="lipSyncMode" class="select">
+          <option value="talking">Новый (LivePortrait+Wav2Lip)</option>
+          <option value="legacy">Старый (LIPSYNC)</option>
+        </select>
         <button id="resetChatBtn" class="secondary" type="button">
           Сбросить чат
         </button>
+        <button id="analyzeBtn" class="secondary" type="button">
+          Анализ встречи
+        </button>
         <span id="status">Готово</span>
+      </div>
+      <div class="mic-panel" id="micPanel" aria-live="polite">
+        <span class="mic-label">Микрофон:</span>
+        <div class="mic-meter" aria-hidden="true">
+          <div id="micLevelBar" class="mic-meter-fill"></div>
+        </div>
+        <span id="micLevelText" class="mic-level-text">нет сигнала</span>
+      </div>
+      <div class="mic-device-row">
+        <label class="mic-device-label" for="micDeviceSelect">Вход:</label>
+        <select id="micDeviceSelect" class="select mic-device-select"></select>
+        <button id="refreshMicBtn" type="button" class="mic-refresh">Обновить</button>
       </div>
       <div class="version">UI v3</div>
 
@@ -38,6 +60,9 @@
             playsinline
           ></video>
         </div>
+        <div class="avatar-meta">
+          <span id="lipSyncStatus"></span>
+        </div>
       </section>
 
       <section class="result">
@@ -49,8 +74,13 @@
         <h2>Транскрибация (на лету)</h2>
         <pre id="livePreview">—</pre>
       </section>
+
+      <section class="result">
+        <h2>Анализ встречи</h2>
+        <pre id="analysisOutput">—</pre>
+      </section>
     </main>
 
-    <script src="/static/app.js?v=23"></script>
+    <script src="/static/app.js?v=32"></script>
   </body>
 </html>

@@ -102,12 +102,35 @@ chat_lock = threading.Lock()
 chat_sessions: dict[str, dict[str, object]] = {}
 
 
-def ensure_system_prompt(history: list[dict[str, str]]) -> list[dict[str, str]]:
-    if not SYSTEM_PROMPT:
+def ensure_system_prompt(
+    history: list[dict[str, str]],
+    system_prompt: str | None = None,
+) -> list[dict[str, str]]:
+    prompt = str(system_prompt if system_prompt is not None else SYSTEM_PROMPT).strip()
+    if not prompt:
         return history
     if history and history[0].get("role") == "system":
-        return history
-    return [{"role": "system", "content": SYSTEM_PROMPT}] + history
+        updated = list(history)
+        updated[0] = {"role": "system", "content": prompt}
+        return updated
+    return [{"role": "system", "content": prompt}] + history
+
+
+def request_system_prompt(data: dict) -> str:
+    prompt_pack = data.get("prompt_pack")
+    if not isinstance(prompt_pack, dict):
+        return SYSTEM_PROMPT
+
+    base = str(prompt_pack.get("system_prompt") or "").strip() or SYSTEM_PROMPT
+    scenario_prompt = str(prompt_pack.get("scenario_prompt") or "").strip()
+    runtime_prompt = str(prompt_pack.get("runtime_state_prompt") or "").strip()
+
+    parts = [base]
+    if scenario_prompt:
+        parts.append(f"Сценарий:\n{scenario_prompt}")
+    if runtime_prompt:
+        parts.append(f"Runtime state:\n{runtime_prompt}")
+    return "\n\n".join(parts).strip()
 
 
 def prune_sessions(now_ts: float) -> None:
@@ -302,17 +325,18 @@ def chat():
 
     reset = bool(data.get("reset", False))
     session_id = (data.get("session_id") or "").strip() or uuid.uuid4().hex
+    effective_system_prompt = request_system_prompt(data)
 
     with chat_lock:
         prune_sessions(time.time())
         if reset or session_id not in chat_sessions:
             chat_sessions[session_id] = {
-                "history": ensure_system_prompt([]),
+                "history": ensure_system_prompt([], effective_system_prompt),
                 "last_active": time.time(),
             }
         session = chat_sessions[session_id]
         history = session.get("history") or []
-        history = ensure_system_prompt(history)  # type: ignore[arg-type]
+        history = ensure_system_prompt(history, effective_system_prompt)  # type: ignore[arg-type]
         history.append({"role": "user", "content": text})
         # keep system message at the beginning; allow large history, trim only if over max_messages
         max_msgs = int(LLM["max_messages"])
@@ -364,11 +388,11 @@ def chat():
 
     with chat_lock:
         session = chat_sessions.get(session_id) or {
-            "history": ensure_system_prompt([]),
+            "history": ensure_system_prompt([], effective_system_prompt),
             "last_active": time.time(),
         }
         history = session.get("history") or []
-        history = ensure_system_prompt(history)  # type: ignore[arg-type]
+        history = ensure_system_prompt(history, effective_system_prompt)  # type: ignore[arg-type]
         history.append({"role": "assistant", "content": reply_text})
         max_msgs = int(LLM["max_messages"])
         if max_msgs > 0:

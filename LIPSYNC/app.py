@@ -103,7 +103,7 @@ def _find_python_in_venv(venv_dir: Path) -> Optional[Path]:
 
 
 def _resolve_repo(cfg: dict[str, Any], key: str, default: str) -> Path:
-    value = _cfg_get(cfg, "lip_sync", key)
+    value = _cfg_get(cfg, key)
     if value:
         return _resolve_path(str(value), ROOT_DIR)
     return _resolve_path(default, ROOT_DIR)
@@ -118,23 +118,27 @@ def _ffmpeg_path(cfg: dict[str, Any]) -> Optional[str]:
 
 def _pipeline_settings() -> dict[str, Any]:
     cfg = _load_config()
+    lip_cfg = cfg.get("lip_sync_legacy") if isinstance(cfg.get("lip_sync_legacy"), dict) else None
+    if not lip_cfg:
+        lip_cfg = cfg.get("lip_sync") if isinstance(cfg.get("lip_sync"), dict) else {}
     work_dir = _resolve_path(
-        str(_cfg_get(cfg, "lip_sync", "work_dir", default="CLEAN_AVATARS")),
+        str(_cfg_get(lip_cfg, "work_dir", default="CLEAN_AVATARS")),
         ROOT_DIR,
     )
-    musetalk_tmp = _cfg_get(cfg, "lip_sync", "musetalk_tmp_dir", default="E:/musetalk_tmp")
+    musetalk_tmp = _cfg_get(lip_cfg, "musetalk_tmp_dir", default="E:/musetalk_tmp")
     return {
         "cfg": cfg,
+        "lip_cfg": lip_cfg,
         "work_dir": work_dir,
-        "sadtalker_dir": _resolve_repo(cfg, "sadtalker_repo", "CLEAN_AVATARS/PIPELINE/SadTalker"),
-        "musetalk_dir": _resolve_repo(cfg, "musetalk_repo", "CLEAN_AVATARS/PIPELINE/MuseTalk"),
-        "codeformer_dir": _resolve_repo(cfg, "codeformer_repo", "CLEAN_AVATARS/PIPELINE/CodeFormer"),
+        "sadtalker_dir": _resolve_repo(lip_cfg, "sadtalker_repo", "CLEAN_AVATARS/PIPELINE/SadTalker"),
+        "musetalk_dir": _resolve_repo(lip_cfg, "musetalk_repo", "CLEAN_AVATARS/PIPELINE/MuseTalk"),
+        "codeformer_dir": _resolve_repo(lip_cfg, "codeformer_repo", "CLEAN_AVATARS/PIPELINE/CodeFormer"),
         "ffmpeg": _ffmpeg_path(cfg),
-        "use_cuda": bool(_cfg_get(cfg, "lip_sync", "use_cuda", default=True)),
-        "pipeline": str(_cfg_get(cfg, "lip_sync", "pipeline", default="full")).lower(),
-        "face_restorer": str(_cfg_get(cfg, "lip_sync", "face_restorer", default="codeformer")).lower(),
-        "enhancer": str(_cfg_get(cfg, "lip_sync", "enhancer", default="gfpgan")).lower(),
-        "python_exe": str(_cfg_get(cfg, "lip_sync", "python_exe", default="")),
+        "use_cuda": bool(_cfg_get(lip_cfg, "use_cuda", default=True)),
+        "pipeline": str(_cfg_get(lip_cfg, "pipeline", default="full")).lower(),
+        "face_restorer": str(_cfg_get(lip_cfg, "face_restorer", default="codeformer")).lower(),
+        "enhancer": str(_cfg_get(lip_cfg, "enhancer", default="gfpgan")).lower(),
+        "python_exe": str(_cfg_get(lip_cfg, "python_exe", default="")),
         "musetalk_tmp_dir": _resolve_path(str(musetalk_tmp), ROOT_DIR),
         "error_log": str(_resolve_path("LIPSYNC/error.log", ROOT_DIR)),
     }
@@ -501,6 +505,9 @@ def generate():
 
 if __name__ == "__main__":
     cfg = _load_config()
-    host = _cfg_get(cfg, "lip_sync", "host", default="127.0.0.1")
-    port = int(_cfg_get(cfg, "lip_sync", "port", default=7002))
+    lip_cfg = cfg.get("lip_sync_legacy") if isinstance(cfg.get("lip_sync_legacy"), dict) else None
+    if not lip_cfg:
+        lip_cfg = cfg.get("lip_sync") if isinstance(cfg.get("lip_sync"), dict) else {}
+    host = _cfg_get(lip_cfg, "host", default="127.0.0.1")
+    port = int(_cfg_get(lip_cfg, "port", default=7002))
     app.run(host=host, port=port, debug=False, threaded=True)

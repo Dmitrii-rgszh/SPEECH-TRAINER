@@ -1,0 +1,18 @@
+============================================================
+LIPSYNC Server OPTIMIZED
+  FP16 + optional seamlessClone bypass
+  Expected speedup: ~2x (12s -> 6s)
+============================================================
+ * Serving Flask app 'app_final_optimized'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on http://127.0.0.1:7002
+Press CTRL+C to quit
+[TIMING] save_audio: 0.00s
+[LIPSYNC] Running OPTIMIZED SadTalker...
+[LIPSYNC] FP16=True, seamlessClone=False
+[LIPSYNC] Cmd: E:\SPEECH TRAINER\LIPSYNC\.venv\Scripts\python.exe inference_optimized.py
+[LIPSYNC] SadTalker completed, looking for output in E:\SPEECH TRAINER\CLEAN_AVATARS\RESULTS\20260130_101025\sadtalker
+[LIPSYNC] Found result: E:\SPEECH TRAINER\CLEAN_AVATARS\RESULTS\20260130_101025\sadtalker\2026_01_30_10.10.36.mp4
+127.0.0.1 - - [30/Jan/2026 10:10:43] "POST /generate HTTP/1.1" 200 -
+127.0.0.1 - - [30/Jan/2026 10:10:54] "GET /timings HTTP/1.1" 200 -

@@ -1,0 +1,35 @@
+[2026-02-05 20:56:12] [WARNING] LivePortrait не установлен: No module named 'liveportrait'
+[2026-02-05 20:56:26] [INFO] ============================================================
+[2026-02-05 20:56:26] [INFO] VISEMA Production Pipeline Configuration
+[2026-02-05 20:56:26] [INFO] ============================================================
+[2026-02-05 20:56:26] [INFO] Project Root: E:\SPEECH TRAINER\VISEMA_NEW
+[2026-02-05 20:56:26] [INFO] Models Dir: E:\SPEECH TRAINER\VISEMA_NEW\models
+[2026-02-05 20:56:26] [INFO] Temp Dir: E:\SPEECH TRAINER\VISEMA_NEW\temp
+[2026-02-05 20:56:26] [INFO] Outputs Dir: E:\SPEECH TRAINER\VISEMA_NEW\outputs
+[2026-02-05 20:56:26] [INFO] FFmpeg encoding: {'vcodec': 'libx264', 'pix_fmt': 'yuv420p', 'profile': 'high', 'level': '4.2', 'crf': '18', 'r': '25'}
+[2026-02-05 20:56:26] [INFO] \u2713 GPU найден: NVIDIA GeForce RTX 3060 Ti (8.6 GB)
+[2026-02-05 20:56:27] [INFO] \u2713 FFmpeg найден
+[2026-02-05 20:56:27] [INFO] ============================================================
+[2026-02-05 20:56:27] [INFO] Запуск Flask на 127.0.0.1:5000
+[2026-02-05 20:56:27] [INFO] Используется device: cuda
+[2026-02-05 20:56:27] [INFO] Temp dir: E:\SPEECH TRAINER\VISEMA_NEW\temp
+[2026-02-05 20:56:27] [INFO] Outputs dir: E:\SPEECH TRAINER\VISEMA_NEW\outputs
+[2026-02-05 20:56:27] [INFO] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on http://127.0.0.1:5000
+[2026-02-05 20:56:27] [INFO] [33mPress CTRL+C to quit[0m
+[2026-02-05 20:56:27] [INFO] 127.0.0.1 - - [05/Feb/2026 20:56:27] "GET /config HTTP/1.1" 200 -
+[2026-02-05 20:56:54] [INFO] 127.0.0.1 - - [05/Feb/2026 20:56:54] "GET /health HTTP/1.1" 200 -
+[2026-02-05 20:56:55] [INFO] 127.0.0.1 - - [05/Feb/2026 20:56:55] "GET /config HTTP/1.1" 200 -
+[2026-02-05 20:56:56] [INFO] 127.0.0.1 - - [05/Feb/2026 20:56:56] "GET / HTTP/1.1" 200 -
+[2026-02-05 20:56:57] [INFO] Создана сессия: 37180bc3
+[2026-02-05 20:56:57] [INFO] [37180bc3] Файлы сохранены
+[2026-02-05 20:56:57] [INFO] [37180bc3] Запуск LivePortrait...
+[2026-02-05 20:56:57] [ERROR] [37180bc3] Ошибка в _process_video: LivePortrait не установлен. Выполните: pip install git+https://github.com/KwaiVGI/LivePortrait.git
+Traceback (most recent call last):
+  File "E:\SPEECH TRAINER\VISEMA_NEW\app.py", line 377, in _process_video
+    liveportrait = LivePortraitRunner(device=Config.DEVICE)
+  File "E:\SPEECH TRAINER\VISEMA_NEW\pipeline\liveportrait_runner.py", line 41, in __init__
+    raise RuntimeError("LivePortrait не установлен. "
+RuntimeError: LivePortrait не установлен. Выполните: pip install git+https://github.com/KwaiVGI/LivePortrait.git
+[2026-02-05 20:56:57] [ERROR] [37180bc3] Ошибка обработки
+[2026-02-05 20:56:57] [INFO] 127.0.0.1 - - [05/Feb/2026 20:56:57] "[35m[1mPOST /generate HTTP/1.1[0m" 500 -
