@@ -80,6 +80,8 @@ SMTP_FROM = os.getenv("SMTP_FROM", SMTP_USER)
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "")
 SCENARIO_STATUS_DRAFT = "draft"
 SCENARIO_STATUS_ACTIVE = "active"
+PERSONA_STATUS_DRAFT = "draft"
+PERSONA_STATUS_ACTIVE = "active"
 SCENARIO_SUPPORTED_MODELS = [
     {"id": "qwen2.5:7b-instruct", "label": "Qwen 2.5 7B Instruct"},
     {"id": "qwen2.5:14b-instruct", "label": "Qwen 2.5 14B Instruct"},
@@ -401,6 +403,27 @@ def _init_auth_db() -> None:
         cur.execute(
             "CREATE INDEX IF NOT EXISTS idx_scenario_events_owner_login ON scenario_events(owner_login)"
         )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS personas (
+              persona_id TEXT PRIMARY KEY,
+              owner_login TEXT NOT NULL,
+              owner_user_id TEXT NOT NULL,
+              name TEXT NOT NULL,
+              status TEXT NOT NULL DEFAULT 'draft',
+              version INTEGER NOT NULL DEFAULT 1,
+              persona_json TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            )
+            """
+        )
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_personas_owner_login ON personas(owner_login)")
+        cur.execute(
+            "CREATE INDEX IF NOT EXISTS idx_personas_owner_user_id ON personas(owner_user_id)"
+        )
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_personas_status ON personas(status)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_personas_updated_at ON personas(updated_at)")
         conn.commit()
     finally:
         conn.close()
@@ -489,8 +512,15 @@ def _supported_model_ids() -> set[str]:
 
 def _normalize_behavior_profile(raw: dict | None, persona_type: str = "") -> dict:
     profile = raw if isinstance(raw, dict) else {}
-    persona = _to_text(persona_type, "influencer", max_len=32)
+    persona = _to_text(persona_type, max_len=32)
     presets = {
+        "neutral": {
+            "trust_to_bank": "medium",
+            "decision_style": "emotional",
+            "communication_style": "open",
+            "speech_tempo": "medium",
+            "complexity_level": 3,
+        },
         "influencer": {
             "trust_to_bank": "medium",
             "decision_style": "emotional",
@@ -520,7 +550,7 @@ def _normalize_behavior_profile(raw: dict | None, persona_type: str = "") -> dic
             "complexity_level": 5,
         },
     }
-    defaults = presets.get(persona, presets["influencer"])
+    defaults = presets.get(persona, presets["neutral"])
 
     trust_to_bank = _to_text(profile.get("trust_to_bank"), defaults["trust_to_bank"], max_len=16)
     if trust_to_bank not in {"low", "medium", "high"}:
@@ -580,11 +610,37 @@ def _default_scenario_payload() -> dict:
             "decision_style": "fast",
             "financial_profile": "moderate",
         },
+        "persona_selection": {
+            "selected_persona_id": "",
+            "selected_persona_snapshot": {
+                "name": "",
+                "description": "",
+                "age": None,
+                "client_type": "",
+                "greeting": "",
+                "behavior": "",
+                "behavior_mode": "free",
+                "behavior_struct": {
+                    "communication_style": "unknown",
+                    "decision_speed": "unknown",
+                    "openness": "unknown",
+                    "pressure_reaction": "unknown",
+                    "objection_level": "unknown",
+                    "answer_length": "unknown",
+                    "empathy_effect": "unknown",
+                    "extra": "",
+                },
+                "avatar_id": "",
+                "persona_status": "",
+                "persona_version": 0,
+                "persona_updated_at": "",
+            },
+        },
         "behavior_profile": {
             "trust_to_bank": "medium",
             "decision_style": "emotional",
             "communication_style": "open",
-            "speech_tempo": "fast",
+            "speech_tempo": "medium",
             "complexity_level": 3,
         },
         "facts": {
@@ -592,6 +648,7 @@ def _default_scenario_payload() -> dict:
             "reason_custom": "",
             "goal": "preserve",
             "goal_custom": "",
+            "meeting_life_goal": "",
             "horizon_months": 12,
             "liquidity": "medium",
             "amount": 300000,
@@ -709,6 +766,9 @@ def _normalize_scenario_payload(raw_payload: dict | None) -> dict:
         model = defaults["model"]
 
     persona = merged.get("persona") if isinstance(merged.get("persona"), dict) else {}
+    persona_selection = (
+        merged.get("persona_selection") if isinstance(merged.get("persona_selection"), dict) else {}
+    )
     knowledge_refs = (
         merged.get("knowledge_refs") if isinstance(merged.get("knowledge_refs"), dict) else {}
     )
@@ -734,6 +794,21 @@ def _normalize_scenario_payload(raw_payload: dict | None) -> dict:
     stop = merged.get("stop") if isinstance(merged.get("stop"), dict) else {}
     autofinish = merged.get("autofinish") if isinstance(merged.get("autofinish"), dict) else {}
     analysis = merged.get("analysis") if isinstance(merged.get("analysis"), dict) else {}
+    selected_persona_snapshot = (
+        persona_selection.get("selected_persona_snapshot")
+        if isinstance(persona_selection.get("selected_persona_snapshot"), dict)
+        else {}
+    )
+    selected_persona_id = _to_text(persona_selection.get("selected_persona_id"), max_len=80)
+    snapshot_behavior_struct_raw = (
+        selected_persona_snapshot.get("behavior_struct")
+        if isinstance(selected_persona_snapshot.get("behavior_struct"), dict)
+        else {}
+    )
+
+    def _norm_snapshot_behavior_struct_value(value: str) -> str:
+        cleaned = _to_text(value, max_len=80)
+        return cleaned if cleaned else "unknown"
 
     persona_type = _to_text(persona.get("persona_type"), "influencer", max_len=32)
     persona_defaults = {
@@ -813,12 +888,77 @@ def _normalize_scenario_payload(raw_payload: dict | None) -> dict:
                 persona.get("financial_profile"), fallback_profile, max_len=64
             ),
         },
-        "behavior_profile": _normalize_behavior_profile(behavior_profile, persona_type),
+        "persona_selection": {
+            "selected_persona_id": selected_persona_id,
+            "selected_persona_snapshot": {
+                "name": _to_text(selected_persona_snapshot.get("name"), max_len=80),
+                "description": _to_text(
+                    selected_persona_snapshot.get("description"), max_len=500
+                ),
+                "age": _to_int(
+                    selected_persona_snapshot.get("age"),
+                    35,
+                    min_value=18,
+                    max_value=90,
+                )
+                if selected_persona_snapshot.get("age") not in (None, "")
+                else None,
+                "client_type": _to_text(
+                    selected_persona_snapshot.get("client_type"), max_len=40
+                ),
+                "greeting": _to_text(selected_persona_snapshot.get("greeting"), max_len=300),
+                "behavior": _to_text(selected_persona_snapshot.get("behavior"), max_len=5000),
+                "behavior_mode": _to_text(
+                    selected_persona_snapshot.get("behavior_mode"), "free", max_len=16
+                ),
+                "behavior_struct": {
+                    "communication_style": _norm_snapshot_behavior_struct_value(
+                        snapshot_behavior_struct_raw.get("communication_style")
+                    ),
+                    "decision_speed": _norm_snapshot_behavior_struct_value(
+                        snapshot_behavior_struct_raw.get("decision_speed")
+                    ),
+                    "openness": _norm_snapshot_behavior_struct_value(
+                        snapshot_behavior_struct_raw.get("openness")
+                    ),
+                    "pressure_reaction": _norm_snapshot_behavior_struct_value(
+                        snapshot_behavior_struct_raw.get("pressure_reaction")
+                    ),
+                    "objection_level": _norm_snapshot_behavior_struct_value(
+                        snapshot_behavior_struct_raw.get("objection_level")
+                    ),
+                    "answer_length": _norm_snapshot_behavior_struct_value(
+                        snapshot_behavior_struct_raw.get("answer_length")
+                    ),
+                    "empathy_effect": _norm_snapshot_behavior_struct_value(
+                        snapshot_behavior_struct_raw.get("empathy_effect")
+                    ),
+                    "extra": _to_text(snapshot_behavior_struct_raw.get("extra"), max_len=1200),
+                },
+                "avatar_id": _to_text(selected_persona_snapshot.get("avatar_id"), max_len=80),
+                "persona_status": _to_text(
+                    selected_persona_snapshot.get("persona_status"), max_len=24
+                ),
+                "persona_version": _to_int(
+                    selected_persona_snapshot.get("persona_version"),
+                    0,
+                    min_value=0,
+                    max_value=1000000,
+                ),
+                "persona_updated_at": _to_text(
+                    selected_persona_snapshot.get("persona_updated_at"), max_len=64
+                ),
+            },
+        },
+        "behavior_profile": _normalize_behavior_profile(
+            behavior_profile, "" if selected_persona_id else persona_type
+        ),
         "facts": {
             "reason": _to_text(facts.get("reason"), "deposit_matured", max_len=64),
             "reason_custom": _to_text(facts.get("reason_custom"), max_len=200),
             "goal": _to_text(facts.get("goal"), "preserve", max_len=64),
             "goal_custom": _to_text(facts.get("goal_custom"), max_len=200),
+            "meeting_life_goal": _to_text(facts.get("meeting_life_goal"), max_len=300),
             "horizon_months": _to_int(
                 facts.get("horizon_months"), 12, min_value=1, max_value=60
             ),
@@ -900,6 +1040,14 @@ def _normalize_scenario_payload(raw_payload: dict | None) -> dict:
         normalized["stop"]["stop_phrase"] = defaults["stop"]["stop_phrase"]
     if not normalized["objections"]["pool"]:
         normalized["objections"]["pool"] = defaults["objections"]["pool"]
+    snapshot_mode = _to_text(
+        normalized["persona_selection"]["selected_persona_snapshot"].get("behavior_mode"),
+        "free",
+        max_len=16,
+    )
+    if snapshot_mode not in {"free", "structured"}:
+        snapshot_mode = "free"
+    normalized["persona_selection"]["selected_persona_snapshot"]["behavior_mode"] = snapshot_mode
 
     max_threshold = max(1, len(normalized["success"]["checklist"]))
     normalized["success"]["threshold"] = _to_int(
@@ -942,17 +1090,11 @@ def _validate_scenario_for_publish(scenario: dict) -> list[dict]:
     if technology_pack_id and not load_pack(PROJECT_DIR, technology_pack_id):
         add_error("knowledge_refs.technology_pack_id", "Выбранный пакет технологии не найден.")
 
-    persona = scenario.get("persona") if isinstance(scenario.get("persona"), dict) else {}
-    if len(_to_text(persona.get("name"))) < 2:
-        add_error("persona.name", "Имя клиента обязательно (2..30 символов).")
-    if not _to_text(persona.get("persona_type")):
-        add_error("persona.persona_type", "Укажите тип персоны.")
-    if not _to_text(persona.get("speech_manner")):
-        add_error("persona.speech_manner", "Укажите манеру общения.")
-    if not _to_text(persona.get("decision_style")):
-        add_error("persona.decision_style", "Укажите стиль принятия решения.")
-    if not _to_text(persona.get("financial_profile")):
-        add_error("persona.financial_profile", "Укажите финансовый профиль.")
+    persona_selection = (
+        scenario.get("persona_selection") if isinstance(scenario.get("persona_selection"), dict) else {}
+    )
+    if not _to_text(persona_selection.get("selected_persona_id"), max_len=80):
+        add_error("persona_selection.selected_persona_id", "Выберите персону из списка.")
 
     behavior_profile = (
         scenario.get("behavior_profile")
@@ -972,6 +1114,22 @@ def _validate_scenario_for_publish(scenario: dict) -> list[dict]:
         add_error("behavior_profile.complexity_level", "Сложность должна быть в диапазоне 1..5.")
 
     facts = scenario.get("facts") if isinstance(scenario.get("facts"), dict) else {}
+    allowed_reason_values = {
+        "deposit_matured",
+        "large_sum",
+        "safety_cushion",
+        "compare_banks",
+        "recommended",
+        "custom",
+    }
+    allowed_goal_values = {
+        "preserve",
+        "accumulate",
+        "yield",
+        "liquidity",
+        "target_date",
+        "custom",
+    }
     required_facts = [
         ("reason", "Выберите причину обращения."),
         ("goal", "Выберите цель клиента."),
@@ -981,6 +1139,22 @@ def _validate_scenario_for_publish(scenario: dict) -> list[dict]:
     for key, message in required_facts:
         if not _to_text(facts.get(key)):
             add_error(f"facts.{key}", message)
+    reason_value = _to_text(facts.get("reason"))
+    goal_value = _to_text(facts.get("goal"))
+    if reason_value and reason_value not in allowed_reason_values:
+        add_error("facts.reason", "Некорректное значение причины обращения.")
+    if goal_value and goal_value not in allowed_goal_values:
+        add_error("facts.goal", "Некорректное значение цели клиента.")
+    if reason_value == "custom" and len(_to_text(facts.get("reason_custom"))) < 3:
+        add_error("facts.reason_custom", "Заполните свою причину обращения (минимум 3 символа).")
+    if goal_value == "custom" and len(_to_text(facts.get("goal_custom"))) < 3:
+        add_error("facts.goal_custom", "Заполните свою цель клиента (минимум 3 символа).")
+    life_goal = _to_text(facts.get("meeting_life_goal"))
+    if len(life_goal) < 8 or len(life_goal) > 300:
+        add_error(
+            "facts.meeting_life_goal",
+            "Жизненная цель клиента должна быть от 8 до 300 символов.",
+        )
     horizon = _to_int(facts.get("horizon_months"), 0)
     if horizon < 1 or horizon > 60:
         add_error("facts.horizon_months", "Горизонт должен быть в диапазоне 1..60 месяцев.")
@@ -1064,6 +1238,14 @@ def _validate_scenario_for_publish(scenario: dict) -> list[dict]:
 
 def _build_scenario_prompt(scenario: dict) -> str:
     persona = scenario.get("persona", {})
+    persona_selection = (
+        scenario.get("persona_selection") if isinstance(scenario.get("persona_selection"), dict) else {}
+    )
+    persona_snapshot = (
+        persona_selection.get("selected_persona_snapshot")
+        if isinstance(persona_selection.get("selected_persona_snapshot"), dict)
+        else {}
+    )
     behavior_profile = scenario.get("behavior_profile", {})
     facts = scenario.get("facts", {})
     dialog_rules = scenario.get("dialog_rules", {})
@@ -1072,17 +1254,145 @@ def _build_scenario_prompt(scenario: dict) -> str:
     objections_rules = objections.get("rules", {})
     success = scenario.get("success", {})
     stop = scenario.get("stop", {})
+    client_type_map = {
+        "student": "студент",
+        "working": "работающий",
+        "retired": "пенсионер",
+        "retired_working": "пенсионер + работающий",
+    }
+    client_motivation_map = {
+        "student": "Чаще думает о накоплении на первый крупный шаг (авто, первоначальный взнос, обучение), чувствителен к ежемесячной нагрузке.",
+        "working": "Обычно фокус на семейных целях, защите дохода и балансе доходности с доступностью денег.",
+        "retired": "Фокус на сохранении капитала, предсказуемости и простых условиях без лишнего риска.",
+        "retired_working": "Сочетает запрос на сохранность средств с умеренной доходностью и гибкостью доступа к деньгам.",
+    }
+    reason_map = {
+        "deposit_matured": "Закончился вклад, хочу переоформить",
+        "large_sum": "Появилась крупная сумма",
+        "safety_cushion": "Хочу подушку безопасности",
+        "compare_banks": "Сравниваю банки",
+        "recommended": "Друг посоветовал",
+        "custom": "Своя причина",
+    }
+    goal_map = {
+        "preserve": "Сохранить",
+        "accumulate": "Накопить",
+        "yield": "Доходность",
+        "liquidity": "Ликвидность",
+        "target_date": "К определенному сроку",
+        "custom": "Своя цель",
+    }
+    liquidity_map = {
+        "high": "высокая",
+        "medium": "средняя",
+        "low": "низкая",
+    }
+    investment_exp_map = {
+        "none": "нет",
+        "minimal": "минимальный",
+        "has": "есть",
+    }
+    trust_map = {"low": "низкое", "medium": "среднее", "high": "высокое"}
+    decision_style_map = {
+        "rational": "рациональный",
+        "emotional": "эмоциональный",
+        "cautious": "осторожный",
+    }
+    communication_style_map = {
+        "closed": "закрытый",
+        "neutral": "нейтральный",
+        "open": "открытый",
+    }
+    speech_tempo_map = {"slow": "медленный", "medium": "средний", "fast": "быстрый"}
+    trigger_map = {
+        "non_deposit_offer": "При предложении не вклада",
+        "cross_sell_attempt": "При попытке кросс-сейла",
+        "too_many_questions": "Когда менеджер задаёт слишком много вопросов",
+        "investment_terms": "Когда звучат термины инвестиции/страхование",
+        "no_direct_answer": "Когда нет ответа на прямой вопрос",
+        "move_to_closing": "При переходе к оформлению",
+        "custom": "Свой триггер",
+    }
+
+    snapshot_age = (
+        _to_int(persona_snapshot.get("age"), 0)
+        if persona_snapshot.get("age") not in (None, "")
+        else (
+            _to_int(persona.get("age"), 0)
+            if persona.get("age") not in (None, "")
+            else None
+        )
+    )
+    snapshot_client_type_key = _to_text(persona_snapshot.get("client_type")) or _to_text(
+        persona.get("client_type")
+    )
+    snapshot_client_type = client_type_map.get(snapshot_client_type_key, "не указан")
+    age_context = "Возрастной контекст не задан."
+    if isinstance(snapshot_age, int):
+        if snapshot_age <= 25:
+            age_context = "Молодой клиент: чаще обсуждает стартовые финансовые цели и гибкость."
+        elif snapshot_age <= 45:
+            age_context = "Клиент среднего возраста: чаще важны семья, стабильность и практичная доходность."
+        elif snapshot_age <= 60:
+            age_context = "Зрелый клиент: обычно выше фокус на надежности и контроле риска."
+        else:
+            age_context = "Старший клиент: приоритет сохранности, ясности условий и доступности средств."
+    motivation_context = client_motivation_map.get(
+        snapshot_client_type_key,
+        "Жизненные цели клиента уточняются в диалоге, без выдумывания деталей.",
+    )
+    snapshot_behavior_mode = _to_text(persona_snapshot.get("behavior_mode"), "free", max_len=16)
+    snapshot_behavior_struct = (
+        persona_snapshot.get("behavior_struct")
+        if isinstance(persona_snapshot.get("behavior_struct"), dict)
+        else {}
+    )
+    behavior_struct_view_map = {
+        "communication_style": "Манера общения",
+        "decision_speed": "Скорость принятия решений",
+        "openness": "Открытость в диалоге",
+        "pressure_reaction": "Реакция на давление",
+        "objection_level": "Частота возражений",
+        "answer_length": "Длина ответов",
+        "empathy_effect": "Влияние эмпатии",
+    }
+    behavior_struct_lines: list[str] = []
+    for key, label in behavior_struct_view_map.items():
+        value = _to_text(snapshot_behavior_struct.get(key), "unknown")
+        if value and value != "unknown":
+            behavior_struct_lines.append(f"- {label}: {value}")
+    extra_behavior = _to_text(snapshot_behavior_struct.get("extra"))
+    if extra_behavior:
+        behavior_struct_lines.append(f"- Дополнительно: {extra_behavior}")
+    reason_value = _to_text(facts.get("reason"))
+    goal_value = _to_text(facts.get("goal"))
+    resolved_reason = (
+        _to_text(facts.get("reason_custom"))
+        if reason_value == "custom"
+        else reason_map.get(reason_value, reason_value)
+    )
+    resolved_goal = (
+        _to_text(facts.get("goal_custom"))
+        if goal_value == "custom"
+        else goal_map.get(goal_value, goal_value)
+    )
 
     objection_lines: list[str] = []
     for idx, item in enumerate(objections.get("pool", []), start=1):
         if not isinstance(item, dict):
             continue
+        trigger_value = _to_text(item.get("trigger"))
+        trigger_text = (
+            _to_text(item.get("trigger_custom"))
+            if trigger_value == "custom"
+            else trigger_map.get(trigger_value, trigger_value)
+        )
         phrases = item.get("phrases") if isinstance(item.get("phrases"), list) else []
         formatted_phrases = "; ".join([_to_text(v, max_len=220) for v in phrases if _to_text(v)])
         objection_lines.append(
             (
                 f"{idx}. {_to_text(item.get('name'))} | "
-                f"Триггер: {_to_text(item.get('trigger')) or _to_text(item.get('trigger_custom'))} | "
+                f"Триггер: {trigger_text or '(не задан)'} | "
                 f"Интенсивность: {_to_int(item.get('intensity'), 2, min_value=1, max_value=3)} | "
                 f"Повтор: {'да' if _to_bool(item.get('repeatable'), False) else 'нет'} | "
                 f"Фразы: {formatted_phrases}"
@@ -1099,26 +1409,41 @@ def _build_scenario_prompt(scenario: dict) -> str:
         f"- Кто говорит первым: {'клиент (ИИ)' if _to_text(scenario.get('first_speaker'), 'user') == 'ai' else 'менеджер (пользователь)'}\n"
         f"- Стартовая реплика: {_to_text(scenario.get('opening_line'))}\n\n"
         "Персона:\n"
-        f"- Имя: {_to_text(persona.get('name'), default='Клиент')}\n"
-        f"- Возраст: {persona.get('age') if persona.get('age') is not None else 'не указан'}\n"
-        f"- Тип: {_to_text(persona.get('persona_type'))}\n"
-        f"- Манера общения: {_to_text(persona.get('speech_manner'))}\n"
-        f"- Стиль принятия решения: {_to_text(persona.get('decision_style'))}\n"
-        f"- Финансовый профиль: {_to_text(persona.get('financial_profile'))}\n\n"
+        f"- ID персоны: {_to_text(persona_selection.get('selected_persona_id'), default='(не выбран)')}\n"
+        f"- Имя: {_to_text(persona_snapshot.get('name') or persona.get('name'), default='Клиент')}\n"
+        f"- Возраст: {snapshot_age if snapshot_age is not None else 'не указан'}\n"
+        f"- Тип клиента: {snapshot_client_type}\n"
+        "- Источник характера: системный промпт выбранной персоны (snapshot) + динамика runtime_state.\n\n"
+        "Описание и поведение персоны:\n"
+        f"- Snapshot статус/версия: {_to_text(persona_snapshot.get('persona_status'), default='(не задан)')} / {_to_int(persona_snapshot.get('persona_version'), 0)}\n"
+        f"- Snapshot обновлен: {_to_text(persona_snapshot.get('persona_updated_at'), default='(не задано)')}\n"
+        f"- Возраст персоны: {snapshot_age if snapshot_age is not None else 'не указан'}\n"
+        f"- Тип клиента: {snapshot_client_type}\n"
+        f"- Режим поведения персоны: {snapshot_behavior_mode}\n"
+        f"- Возрастной контекст: {age_context}\n"
+        f"- Контекст типа клиента: {motivation_context}\n"
+        f"- Описание: {_to_text(persona_snapshot.get('description'), default='(не задано)')}\n"
+        f"- Приветствие: {_to_text(persona_snapshot.get('greeting'), default='(не задано)')}\n"
+        f"- Системный промпт персоны: {_to_text(persona_snapshot.get('behavior'), default='(не задано)')}\n"
+        "Структурированные признаки персоны:\n"
+        + ("\n".join(behavior_struct_lines) if behavior_struct_lines else "- (не заданы)")
+        + "\n\n"
         "Профиль поведения:\n"
-        f"- Доверие к банку: {_to_text(behavior_profile.get('trust_to_bank'), 'medium')}\n"
-        f"- Стиль решения: {_to_text(behavior_profile.get('decision_style'), 'emotional')}\n"
-        f"- Стиль коммуникации: {_to_text(behavior_profile.get('communication_style'), 'open')}\n"
-        f"- Темп речи: {_to_text(behavior_profile.get('speech_tempo'), 'medium')}\n"
+        "- Это модификаторы динамики диалога. Если есть конфликт с системным промптом персоны, приоритет у системного промпта персоны.\n"
+        f"- Доверие к банку: {trust_map.get(_to_text(behavior_profile.get('trust_to_bank'), 'medium'), _to_text(behavior_profile.get('trust_to_bank'), 'medium'))}\n"
+        f"- Стиль решения: {decision_style_map.get(_to_text(behavior_profile.get('decision_style'), 'emotional'), _to_text(behavior_profile.get('decision_style'), 'emotional'))}\n"
+        f"- Стиль коммуникации: {communication_style_map.get(_to_text(behavior_profile.get('communication_style'), 'open'), _to_text(behavior_profile.get('communication_style'), 'open'))}\n"
+        f"- Темп речи: {speech_tempo_map.get(_to_text(behavior_profile.get('speech_tempo'), 'medium'), _to_text(behavior_profile.get('speech_tempo'), 'medium'))}\n"
         f"- Уровень сложности: {_to_int(behavior_profile.get('complexity_level'), 3, min_value=1, max_value=5)}\n\n"
         "Факты:\n"
-        f"- Причина обращения: {_to_text(facts.get('reason')) or _to_text(facts.get('reason_custom'))}\n"
-        f"- Цель: {_to_text(facts.get('goal')) or _to_text(facts.get('goal_custom'))}\n"
+        f"- Причина обращения: {resolved_reason or '(не указана)'}\n"
+        f"- Цель: {resolved_goal or '(не указана)'}\n"
+        f"- Жизненная цель встречи: {_to_text(facts.get('meeting_life_goal'), default='(не указана)')}\n"
         f"- Горизонт: {_to_int(facts.get('horizon_months'), 12)} мес.\n"
-        f"- Нужна ликвидность: {_to_text(facts.get('liquidity'))}\n"
+        f"- Нужна ликвидность: {liquidity_map.get(_to_text(facts.get('liquidity')), _to_text(facts.get('liquidity')))}\n"
         f"- Сумма: {_to_int(facts.get('amount'), 0)} {_to_text(facts.get('currency'))}\n"
         f"- Был вклад ранее: {'да' if _to_bool(facts.get('had_deposit_before'), False) else 'нет'}\n"
-        f"- Опыт инвестиций: {_to_text(facts.get('investment_experience'), default='нет')}\n\n"
+        f"- Опыт инвестиций: {investment_exp_map.get(_to_text(facts.get('investment_experience')), _to_text(facts.get('investment_experience'), default='нет'))}\n\n"
         "Красные линии:\n"
         + ("\n".join([f"- {line}" for line in red_lines]) if red_lines else "- (не указаны)")
         + "\n"
@@ -1717,6 +2042,260 @@ def _json_loads(data: str | None) -> dict:
         return {}
 
 
+def _default_persona_payload() -> dict:
+    return {
+        "name": "",
+        "description": "",
+        "age": None,
+        "client_type": "",
+        "avatar_gender": "male",
+        "avatar_id": "male_senior_1",
+        "greeting": "",
+        "behavior": "",
+        "behavior_mode": "free",
+        "behavior_struct": {
+            "communication_style": "",
+            "decision_speed": "",
+            "openness": "",
+            "pressure_reaction": "",
+            "objection_level": "",
+            "answer_length": "",
+            "empathy_effect": "",
+            "extra": "",
+        },
+        "behavior_struct_confidence": {
+            "communication_style": 0,
+            "decision_speed": 0,
+            "openness": 0,
+            "pressure_reaction": 0,
+            "objection_level": 0,
+            "answer_length": 0,
+            "empathy_effect": 0,
+        },
+    }
+
+
+def _normalize_persona_payload(raw_payload: dict | None) -> dict:
+    defaults = _default_persona_payload()
+    raw = raw_payload if isinstance(raw_payload, dict) else {}
+    merged = _deep_merge_dict(defaults, raw)
+    avatar_gender = _to_text(merged.get("avatar_gender"), "male", max_len=16)
+    if avatar_gender not in {"male", "female"}:
+        avatar_gender = "male"
+    behavior_mode = _to_text(merged.get("behavior_mode"), "free", max_len=16)
+    if behavior_mode not in {"free", "structured"}:
+        behavior_mode = "free"
+    behavior_struct_raw = (
+        merged.get("behavior_struct") if isinstance(merged.get("behavior_struct"), dict) else {}
+    )
+    behavior_struct_conf_raw = (
+        merged.get("behavior_struct_confidence")
+        if isinstance(merged.get("behavior_struct_confidence"), dict)
+        else {}
+    )
+
+    def _infer_behavior_struct_from_text(text: str) -> tuple[dict, dict]:
+        raw_text = _to_text(text, max_len=5000).lower()
+
+        def _has_any(items: list[str]) -> bool:
+            return any(item in raw_text for item in items)
+
+        def _pick(candidates: list[tuple[str, int, list[str]]]) -> tuple[str, int]:
+            for value, confidence, keywords in candidates:
+                if _has_any(keywords):
+                    return value, confidence
+            return "unknown", 0
+
+        communication_style = _pick(
+            [
+                ("эмоциональный", 85, ["эмоцион", "энергич", "вдохнов"]),
+                ("напористый", 85, ["напорист", "жестк", "давит", "требовательн"]),
+                ("деловой", 80, ["делов", "по делу", "конкрет", "структур"]),
+                ("спокойный", 80, ["спокойн", "ровн", "сдержан"]),
+            ]
+        )
+        decision_speed = _pick(
+            [
+                ("быстро", 85, ["быстро реш", "сразу реш", "моментально", "оперативно"]),
+                ("долго", 85, ["долго", "подум", "взвеш", "не спеш"]),
+                ("средне", 70, ["средне", "обычно"]),
+            ]
+        )
+        openness = _pick(
+            [
+                ("закрытый", 85, ["закрыт", "не раскры", "не расска", "коротко"]),
+                ("открытый", 85, ["открыт", "подробно", "делится", "охотно"]),
+                ("нейтральный", 70, ["нейтральн"]),
+            ]
+        )
+        pressure_reaction = _pick(
+            [
+                ("резко негативная", 90, ["не люблю давление", "раздраж", "резко", "агрессив"]),
+                ("терпимая", 80, ["терпим", "спокойно реаг", "нормально к давлению"]),
+                ("умеренная", 70, ["умерен", "настораж", "чувствителен к давлению"]),
+            ]
+        )
+        objection_level = _pick(
+            [
+                ("высокая", 85, ["много возраж", "часто возраж", "скептич", "сомнева"]),
+                ("низкая", 80, ["редко возраж", "доверяет", "легко соглаша"]),
+                ("средняя", 70, ["средняя", "умеренно возраж"]),
+            ]
+        )
+        answer_length = _pick(
+            [
+                ("коротко", 85, ["кратко", "коротко", "без лишних", "по делу"]),
+                ("развернуто", 85, ["развернуто", "подробно", "длинно"]),
+                ("средне", 70, ["средне", "умеренно подробно"]),
+            ]
+        )
+        empathy_effect = _pick(
+            [
+                ("смягчается", 85, ["смягча", "эмпатия помогает", "при эмпатии лучше"]),
+                ("не смягчается", 85, ["не смягча", "эмпатия не влияет", "жестко держит позицию"]),
+                ("нейтрально", 70, ["нейтрально", "почти не влияет"]),
+            ]
+        )
+
+        inferred_struct = {
+            "communication_style": communication_style[0],
+            "decision_speed": decision_speed[0],
+            "openness": openness[0],
+            "pressure_reaction": pressure_reaction[0],
+            "objection_level": objection_level[0],
+            "answer_length": answer_length[0],
+            "empathy_effect": empathy_effect[0],
+        }
+        inferred_conf = {
+            "communication_style": communication_style[1],
+            "decision_speed": decision_speed[1],
+            "openness": openness[1],
+            "pressure_reaction": pressure_reaction[1],
+            "objection_level": objection_level[1],
+            "answer_length": answer_length[1],
+            "empathy_effect": empathy_effect[1],
+        }
+        return inferred_struct, inferred_conf
+
+    def _norm_struct_value(value: str) -> str:
+        cleaned = _to_text(value, max_len=80)
+        return cleaned if cleaned else "unknown"
+    behavior_text = _to_text(merged.get("behavior"), max_len=5000)
+    normalized_struct = {
+        "communication_style": _norm_struct_value(
+            _to_text(behavior_struct_raw.get("communication_style"), max_len=80)
+        ),
+        "decision_speed": _norm_struct_value(
+            _to_text(behavior_struct_raw.get("decision_speed"), max_len=80)
+        ),
+        "openness": _norm_struct_value(_to_text(behavior_struct_raw.get("openness"), max_len=80)),
+        "pressure_reaction": _norm_struct_value(
+            _to_text(behavior_struct_raw.get("pressure_reaction"), max_len=80)
+        ),
+        "objection_level": _norm_struct_value(
+            _to_text(behavior_struct_raw.get("objection_level"), max_len=80)
+        ),
+        "answer_length": _norm_struct_value(
+            _to_text(behavior_struct_raw.get("answer_length"), max_len=80)
+        ),
+        "empathy_effect": _norm_struct_value(
+            _to_text(behavior_struct_raw.get("empathy_effect"), max_len=80)
+        ),
+        "extra": _to_text(behavior_struct_raw.get("extra"), max_len=1200),
+    }
+    normalized_conf = {
+        "communication_style": _to_int(
+            behavior_struct_conf_raw.get("communication_style"), 0, min_value=0, max_value=100
+        ),
+        "decision_speed": _to_int(
+            behavior_struct_conf_raw.get("decision_speed"), 0, min_value=0, max_value=100
+        ),
+        "openness": _to_int(behavior_struct_conf_raw.get("openness"), 0, min_value=0, max_value=100),
+        "pressure_reaction": _to_int(
+            behavior_struct_conf_raw.get("pressure_reaction"), 0, min_value=0, max_value=100
+        ),
+        "objection_level": _to_int(
+            behavior_struct_conf_raw.get("objection_level"), 0, min_value=0, max_value=100
+        ),
+        "answer_length": _to_int(
+            behavior_struct_conf_raw.get("answer_length"), 0, min_value=0, max_value=100
+        ),
+        "empathy_effect": _to_int(
+            behavior_struct_conf_raw.get("empathy_effect"), 0, min_value=0, max_value=100
+        ),
+    }
+    if behavior_mode == "free":
+        inferred_struct, inferred_conf = _infer_behavior_struct_from_text(behavior_text)
+        for key in (
+            "communication_style",
+            "decision_speed",
+            "openness",
+            "pressure_reaction",
+            "objection_level",
+            "answer_length",
+            "empathy_effect",
+        ):
+            if normalized_struct.get(key) in ("", "unknown"):
+                normalized_struct[key] = inferred_struct.get(key, "unknown")
+            if _to_int(normalized_conf.get(key), 0) <= 0:
+                normalized_conf[key] = _to_int(inferred_conf.get(key), 0, min_value=0, max_value=100)
+    return {
+        "name": _to_text(merged.get("name"), max_len=80),
+        "description": _to_text(merged.get("description"), max_len=500),
+        "age": _to_int(merged.get("age"), 35, min_value=18, max_value=90)
+        if merged.get("age") not in (None, "")
+        else None,
+        "client_type": _to_text(merged.get("client_type"), max_len=40),
+        "avatar_gender": avatar_gender,
+        "avatar_id": _to_text(merged.get("avatar_id"), max_len=80),
+        "greeting": _to_text(merged.get("greeting"), max_len=300),
+        "behavior": behavior_text,
+        "behavior_mode": behavior_mode,
+        "behavior_struct": normalized_struct,
+        "behavior_struct_confidence": normalized_conf,
+    }
+
+
+def _validate_persona_for_publish(persona: dict) -> list[dict]:
+    errors: list[dict] = []
+    if len(_to_text(persona.get("name"))) < 2:
+        errors.append({"field": "name", "message": "Имя персоны должно быть не короче 2 символов."})
+    age = _to_int(persona.get("age"), 0)
+    if age < 18 or age > 90:
+        errors.append({"field": "age", "message": "Возраст персоны должен быть в диапазоне 18..90."})
+    if _to_text(persona.get("client_type")) not in {
+        "student",
+        "working",
+        "retired",
+        "retired_working",
+    }:
+        errors.append(
+            {
+                "field": "client_type",
+                "message": "Выберите тип клиента: студент / работающий / пенсионер / пенсионер+работающий.",
+            }
+        )
+    if len(_to_text(persona.get("behavior"))) < 10:
+        errors.append(
+            {
+                "field": "behavior",
+                "message": "Для готовой персоны заполните системный промпт (минимум 10 символов).",
+            }
+        )
+    return errors
+
+
+def _persona_from_row(row: sqlite3.Row) -> dict:
+    payload = _normalize_persona_payload(_json_loads(str(row["persona_json"])))
+    payload["id"] = _to_text(row["persona_id"])
+    payload["status"] = _to_text(row["status"], PERSONA_STATUS_DRAFT)
+    payload["version"] = _to_int(row["version"], 1, min_value=1)
+    payload["created_by"] = _to_text(row["owner_login"])
+    payload["created_at"] = _to_text(row["created_at"])
+    payload["updated_at"] = _to_text(row["updated_at"])
+    return payload
+
+
 def _scenario_from_row(row: sqlite3.Row) -> dict:
     payload = _normalize_scenario_payload(_json_loads(str(row["scenario_json"])))
     payload["id"] = str(row["scenario_id"])
@@ -2263,6 +2842,330 @@ def scenarios_models():
     return jsonify({"ok": True, "models": SCENARIO_SUPPORTED_MODELS})
 
 
+@app.get("/personas")
+def personas_list():
+    identity, auth_error = _require_auth_identity()
+    if auth_error:
+        return auth_error
+
+    _init_auth_db()
+    status_filter = _to_text(request.args.get("status"), max_len=16)
+    conn = _db_connect()
+    try:
+        cur = conn.cursor()
+        if status_filter in {PERSONA_STATUS_DRAFT, PERSONA_STATUS_ACTIVE}:
+            cur.execute(
+                """
+                SELECT persona_id, owner_login, name, status, version, persona_json, created_at, updated_at
+                FROM personas
+                WHERE owner_login = ? AND status = ?
+                ORDER BY updated_at DESC
+                """,
+                (identity["login"], status_filter),
+            )
+        else:
+            cur.execute(
+                """
+                SELECT persona_id, owner_login, name, status, version, persona_json, created_at, updated_at
+                FROM personas
+                WHERE owner_login = ?
+                ORDER BY updated_at DESC
+                """,
+                (identity["login"],),
+            )
+        rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    items = [_persona_from_row(row) for row in rows]
+    return jsonify({"ok": True, "items": items})
+
+
+@app.post("/personas")
+def personas_create():
+    identity, auth_error = _require_auth_identity()
+    if auth_error:
+        return auth_error
+
+    _init_auth_db()
+    body = request.get_json(silent=True) or {}
+    incoming = body.get("persona") if isinstance(body.get("persona"), dict) else body
+    persona = _normalize_persona_payload(incoming if isinstance(incoming, dict) else {})
+
+    persona_id = f"prs_{secrets.token_hex(10)}"
+    created_at = _utc_now_iso()
+    persona_json = _json_dumps(persona)
+
+    conn = _db_connect()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO personas(
+              persona_id, owner_login, owner_user_id, name, status, version,
+              persona_json, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                persona_id,
+                identity["login"],
+                identity["user_id"],
+                persona["name"] or "Новая персона",
+                PERSONA_STATUS_DRAFT,
+                1,
+                persona_json,
+                created_at,
+                created_at,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    created = dict(persona)
+    created["id"] = persona_id
+    created["status"] = PERSONA_STATUS_DRAFT
+    created["version"] = 1
+    created["created_by"] = identity["login"]
+    created["created_at"] = created_at
+    created["updated_at"] = created_at
+    return jsonify({"ok": True, "item": created}), 201
+
+
+@app.get("/personas/<persona_id>")
+def personas_get(persona_id: str):
+    identity, auth_error = _require_auth_identity()
+    if auth_error:
+        return auth_error
+
+    _init_auth_db()
+    conn = _db_connect()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT persona_id, owner_login, name, status, version, persona_json, created_at, updated_at
+            FROM personas
+            WHERE persona_id = ? AND owner_login = ?
+            LIMIT 1
+            """,
+            (persona_id, identity["login"]),
+        )
+        row = cur.fetchone()
+    finally:
+        conn.close()
+
+    if not row:
+        return jsonify({"ok": False, "error": "Персона не найдена"}), 404
+    return jsonify({"ok": True, "item": _persona_from_row(row)})
+
+
+@app.patch("/personas/<persona_id>")
+def personas_patch(persona_id: str):
+    identity, auth_error = _require_auth_identity()
+    if auth_error:
+        return auth_error
+
+    _init_auth_db()
+    body = request.get_json(silent=True) or {}
+    incoming = body.get("persona") if isinstance(body.get("persona"), dict) else body
+    patch_data = incoming if isinstance(incoming, dict) else {}
+
+    conn = _db_connect()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT persona_id, owner_login, name, status, version, persona_json, created_at, updated_at
+            FROM personas
+            WHERE persona_id = ? AND owner_login = ?
+            LIMIT 1
+            """,
+            (persona_id, identity["login"]),
+        )
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"ok": False, "error": "Персона не найдена"}), 404
+
+        current = _json_loads(str(row["persona_json"]))
+        merged = _deep_merge_dict(current, patch_data)
+        persona = _normalize_persona_payload(merged)
+        next_version = _to_int(row["version"], 1, min_value=1) + 1
+        updated_at = _utc_now_iso()
+        persona_json = _json_dumps(persona)
+
+        cur.execute(
+            """
+            UPDATE personas
+            SET name = ?,
+                persona_json = ?,
+                version = ?,
+                updated_at = ?
+            WHERE persona_id = ? AND owner_login = ?
+            """,
+            (
+                persona["name"] or _to_text(row["name"]) or "Новая персона",
+                persona_json,
+                next_version,
+                updated_at,
+                persona_id,
+                identity["login"],
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    item = dict(persona)
+    item["id"] = persona_id
+    item["status"] = _to_text(row["status"], PERSONA_STATUS_DRAFT)
+    item["version"] = next_version
+    item["created_by"] = identity["login"]
+    item["created_at"] = _to_text(row["created_at"])
+    item["updated_at"] = updated_at
+    return jsonify({"ok": True, "item": item})
+
+
+@app.post("/personas/<persona_id>/publish")
+def personas_publish(persona_id: str):
+    identity, auth_error = _require_auth_identity()
+    if auth_error:
+        return auth_error
+
+    _init_auth_db()
+    conn = _db_connect()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT persona_id, owner_login, name, status, version, persona_json, created_at, updated_at
+            FROM personas
+            WHERE persona_id = ? AND owner_login = ?
+            LIMIT 1
+            """,
+            (persona_id, identity["login"]),
+        )
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"ok": False, "error": "Персона не найдена"}), 404
+
+        persona = _normalize_persona_payload(_json_loads(str(row["persona_json"])))
+        errors = _validate_persona_for_publish(persona)
+        if errors:
+            return jsonify({"ok": False, "errors": errors}), 400
+
+        next_version = _to_int(row["version"], 1, min_value=1) + 1
+        updated_at = _utc_now_iso()
+        cur.execute(
+            """
+            UPDATE personas
+            SET status = ?, version = ?, updated_at = ?
+            WHERE persona_id = ? AND owner_login = ?
+            """,
+            (PERSONA_STATUS_ACTIVE, next_version, updated_at, persona_id, identity["login"]),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    item = dict(persona)
+    item["id"] = persona_id
+    item["status"] = PERSONA_STATUS_ACTIVE
+    item["version"] = next_version
+    item["created_by"] = identity["login"]
+    item["created_at"] = _to_text(row["created_at"])
+    item["updated_at"] = updated_at
+    return jsonify({"ok": True, "item": item})
+
+
+@app.post("/personas/<persona_id>/clone")
+def personas_clone(persona_id: str):
+    identity, auth_error = _require_auth_identity()
+    if auth_error:
+        return auth_error
+
+    _init_auth_db()
+    conn = _db_connect()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT persona_id, owner_login, name, status, version, persona_json, created_at, updated_at
+            FROM personas
+            WHERE persona_id = ? AND owner_login = ?
+            LIMIT 1
+            """,
+            (persona_id, identity["login"]),
+        )
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"ok": False, "error": "Персона не найдена"}), 404
+
+        source = _normalize_persona_payload(_json_loads(str(row["persona_json"])))
+        source["name"] = f"{_to_text(source.get('name'), 'Персона')} (копия)"
+        new_id = f"prs_{secrets.token_hex(10)}"
+        created_at = _utc_now_iso()
+        persona_json = _json_dumps(source)
+        cur.execute(
+            """
+            INSERT INTO personas(
+              persona_id, owner_login, owner_user_id, name, status, version,
+              persona_json, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                new_id,
+                identity["login"],
+                identity["user_id"],
+                source["name"],
+                PERSONA_STATUS_DRAFT,
+                1,
+                persona_json,
+                created_at,
+                created_at,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    item = dict(source)
+    item["id"] = new_id
+    item["status"] = PERSONA_STATUS_DRAFT
+    item["version"] = 1
+    item["created_by"] = identity["login"]
+    item["created_at"] = created_at
+    item["updated_at"] = created_at
+    return jsonify({"ok": True, "item": item}), 201
+
+
+@app.delete("/personas/<persona_id>")
+def personas_delete(persona_id: str):
+    identity, auth_error = _require_auth_identity()
+    if auth_error:
+        return auth_error
+
+    _init_auth_db()
+    conn = _db_connect()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT persona_id FROM personas WHERE persona_id = ? AND owner_login = ? LIMIT 1",
+            (persona_id, identity["login"]),
+        )
+        row = cur.fetchone()
+        if not row:
+            return jsonify({"ok": False, "error": "Персона не найдена"}), 404
+        cur.execute("DELETE FROM personas WHERE persona_id = ? AND owner_login = ?", (persona_id, identity["login"]))
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify({"ok": True, "persona_id": persona_id})
+
+
 @app.get("/knowledge/catalog")
 def knowledge_catalog():
     identity, auth_error = _require_auth_identity()
@@ -2591,6 +3494,66 @@ def scenarios_publish(scenario_id: str):
 
         scenario = _normalize_scenario_payload(_json_loads(str(row["scenario_json"])))
         errors = _validate_scenario_for_publish(scenario)
+        persona_selection = (
+            scenario.get("persona_selection")
+            if isinstance(scenario.get("persona_selection"), dict)
+            else {}
+        )
+        selected_persona_id = _to_text(persona_selection.get("selected_persona_id"), max_len=80)
+        if selected_persona_id:
+            cur.execute(
+                """
+                SELECT persona_id, owner_login, name, status, version, persona_json, created_at, updated_at
+                FROM personas
+                WHERE persona_id = ? AND owner_login = ?
+                LIMIT 1
+                """,
+                (selected_persona_id, identity["login"]),
+            )
+            persona_row = cur.fetchone()
+            if not persona_row:
+                errors.append(
+                    {
+                        "field": "persona_selection.selected_persona_id",
+                        "message": "Выбранная персона не найдена. Обновите выбор персоны.",
+                    }
+                )
+            else:
+                persona_item = _persona_from_row(persona_row)
+                if _to_text(persona_item.get("status")) != PERSONA_STATUS_ACTIVE:
+                    errors.append(
+                        {
+                            "field": "persona_selection.selected_persona_id",
+                            "message": "Публикация сценария разрешена только с активной персоной.",
+                        }
+                    )
+                age = _to_int(persona_item.get("age"), 0)
+                if age < 18 or age > 90:
+                    errors.append(
+                        {
+                            "field": "persona_selection.selected_persona_snapshot.age",
+                            "message": "У выбранной персоны не указан корректный возраст (18..90).",
+                        }
+                    )
+                if _to_text(persona_item.get("client_type")) not in {
+                    "student",
+                    "working",
+                    "retired",
+                    "retired_working",
+                }:
+                    errors.append(
+                        {
+                            "field": "persona_selection.selected_persona_snapshot.client_type",
+                            "message": "У выбранной персоны не указан тип клиента.",
+                        }
+                    )
+                if len(_to_text(persona_item.get("behavior"))) < 10:
+                    errors.append(
+                        {
+                            "field": "persona_selection.selected_persona_snapshot.behavior",
+                            "message": "У выбранной персоны не заполнен системный промпт поведения.",
+                        }
+                    )
         if errors:
             return jsonify({"ok": False, "errors": errors}), 400
 

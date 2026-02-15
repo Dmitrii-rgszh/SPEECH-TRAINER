@@ -2,7 +2,7 @@ import { mountScenariosWorkspace } from '/static/components/ScenarioWizard.js';
 const MENU_ITEMS = ['Дэшборд', 'Сценарии', 'Персоны', 'Аналитика'];
 const PERSONA_DRAFT_STORAGE_KEY = 'persona_wizard_drafts_v1';
 const PERSONAS_MOCK = [];
-const PERSONA_STEP_TITLES = ['Название и описание', 'Настройка внешнего вида', 'Приветствие и поведение'];
+const PERSONA_STEP_TITLES = ['Название и описание', 'Настройка внешнего вида', 'Поведение персоны'];
 const PERSONA_AVATARS_MOCK = [
   {
     id: 'male_senior_1',
@@ -11,9 +11,13 @@ const PERSONA_AVATARS_MOCK = [
     previewSrc: '/static/assets/avatars/male_senior_full.png',
     gender: 'male',
   },
-  { id: 'av_4', label: 'A4', gender: 'female' },
-  { id: 'av_5', label: 'A5', gender: 'female' },
-  { id: 'av_6', label: 'A6', gender: 'female' },
+  {
+    id: 'female_1',
+    label: 'Женщина 1',
+    thumbSrc: '/static/assets/avatars/female_1_close.png',
+    previewSrc: '/static/assets/avatars/female_1_full.png',
+    gender: 'female',
+  },
 ];
 
 const readPersonaDraftStore = () => {
@@ -35,6 +39,49 @@ const writePersonaDraftStore = (store) => {
   }
 };
 
+const toCardPersona = (item) => ({
+  id: String(item.id || ''),
+  name: String(item.name || 'Новая персона'),
+  subtitle: String(item.status || '').toLowerCase() === 'active' ? 'Готова' : 'Черновик',
+  summary: String(item.description || ''),
+  age: Number(item.age || 0),
+  clientType: String(item.client_type || ''),
+  prompt: String(item.behavior || ''),
+  avatarId: String(item.avatar_id || 'male_senior_1'),
+  status: String(item.status || 'draft'),
+  version: Number(item.version || 1),
+  createdAt: String(item.created_at || ''),
+  updatedAt: String(item.updated_at || ''),
+  greeting: String(item.greeting || ''),
+  avatarGender: String(item.avatar_gender || 'male'),
+  behaviorMode: String(item.behavior_mode || 'free'),
+  behaviorStruct:
+    item.behavior_struct && typeof item.behavior_struct === 'object'
+      ? {
+          communicationStyle: String(item.behavior_struct.communication_style || 'unknown'),
+          decisionSpeed: String(item.behavior_struct.decision_speed || 'unknown'),
+          openness: String(item.behavior_struct.openness || 'unknown'),
+          pressureReaction: String(item.behavior_struct.pressure_reaction || 'unknown'),
+          objectionLevel: String(item.behavior_struct.objection_level || 'unknown'),
+          answerLength: String(item.behavior_struct.answer_length || 'unknown'),
+          empathyEffect: String(item.behavior_struct.empathy_effect || 'unknown'),
+          extra: String(item.behavior_struct.extra || ''),
+        }
+      : null,
+  behaviorStructConfidence:
+    item.behavior_struct_confidence && typeof item.behavior_struct_confidence === 'object'
+      ? {
+          communicationStyle: Number(item.behavior_struct_confidence.communication_style || 0),
+          decisionSpeed: Number(item.behavior_struct_confidence.decision_speed || 0),
+          openness: Number(item.behavior_struct_confidence.openness || 0),
+          pressureReaction: Number(item.behavior_struct_confidence.pressure_reaction || 0),
+          objectionLevel: Number(item.behavior_struct_confidence.objection_level || 0),
+          answerLength: Number(item.behavior_struct_confidence.answer_length || 0),
+          empathyEffect: Number(item.behavior_struct_confidence.empathy_effect || 0),
+        }
+      : null,
+});
+
 export function RightPanel() {
   const panel = document.createElement('section');
   panel.className = 'right-panel';
@@ -55,6 +102,34 @@ export function RightPanel() {
   // TODO: re-enable corporate domain restriction (@vtb.ru / @rgsl.ru).
   const isCorporateEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test((value || '').trim());
 
+  const api = async (path, options = {}) => {
+    const resp = await fetch(path, {
+      credentials: 'same-origin',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+      },
+      ...options,
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      const err = new Error(data?.error || 'Ошибка запроса');
+      err.status = resp.status;
+      err.payload = data;
+      throw err;
+    }
+    return data;
+  };
+
+  const loadPersonasFromApi = async () => {
+    try {
+      const data = await api('/personas', { method: 'GET' });
+      personasStore = Array.isArray(data?.items) ? data.items.map(toCardPersona) : [];
+    } catch (_) {
+      personasStore = [];
+    }
+  };
+
   const buildPersonaCards = () => {
     const cards = personasStore.map((persona) => ({
       ...persona,
@@ -72,7 +147,6 @@ export function RightPanel() {
         subtitle: 'Черновик',
         complexity: `Шаг ${Math.max(1, Math.min(3, Number(item.step || 0) + 1))} из 3`,
         summary: String(data.description || 'Описание не задано'),
-        language: String(data.language || 'Русский'),
         prompt: String(data.behavior || ''),
         avatarId: String(data.avatarId || 'male_senior_1'),
         _isDraft: true,
@@ -397,6 +471,13 @@ export function RightPanel() {
         button.classList.add('is-current');
       }
       button.addEventListener('click', () => {
+        if (label === 'Персоны') {
+          void (async () => {
+            await loadPersonasFromApi();
+            renderWorkspaceView(label, currentLogin);
+          })();
+          return;
+        }
         renderWorkspaceView(label, currentLogin);
       });
       nav.append(button);
@@ -466,21 +547,43 @@ export function RightPanel() {
       createPersonaButton.addEventListener('click', () => {
         openPersonaWizard({
           mode: 'create',
-          onSave: (payload) => {
-            personasStore = [
-              {
-                id: `persona_${Date.now()}`,
-                name: payload.name,
-                subtitle: 'Новая персона',
-                complexity: 'Сложность: настраиваемая',
-                summary: payload.description || 'Описание не задано',
-                language: payload.language || 'Русский',
-                tier: 'Стандартный',
-                prompt: payload.behavior || 'Поведение будет добавлено позже.',
-                avatarId: payload.avatarId || 'male_senior_1',
-              },
-              ...personasStore,
-            ];
+          onSave: async (payload) => {
+            await api('/personas', {
+              method: 'POST',
+              body: JSON.stringify({
+                persona: {
+                  name: payload.name,
+                  description: payload.description || '',
+                  age: Number(payload.age || 0),
+                  client_type: payload.clientType || '',
+                  avatar_gender: payload.avatarGender || 'male',
+                  avatar_id: payload.avatarId || 'male_senior_1',
+                  greeting: payload.greeting || '',
+                  behavior: payload.behavior || '',
+                  behavior_mode: payload.behaviorMode || 'free',
+                  behavior_struct: {
+                    communication_style: payload.behaviorStruct?.communicationStyle || '',
+                    decision_speed: payload.behaviorStruct?.decisionSpeed || '',
+                    openness: payload.behaviorStruct?.openness || '',
+                    pressure_reaction: payload.behaviorStruct?.pressureReaction || '',
+                    objection_level: payload.behaviorStruct?.objectionLevel || '',
+                    answer_length: payload.behaviorStruct?.answerLength || '',
+                    empathy_effect: payload.behaviorStruct?.empathyEffect || '',
+                    extra: payload.behaviorStruct?.extra || '',
+                  },
+                  behavior_struct_confidence: {
+                    communication_style: Number(payload.behaviorStructConfidence?.communicationStyle || 0),
+                    decision_speed: Number(payload.behaviorStructConfidence?.decisionSpeed || 0),
+                    openness: Number(payload.behaviorStructConfidence?.openness || 0),
+                    pressure_reaction: Number(payload.behaviorStructConfidence?.pressureReaction || 0),
+                    objection_level: Number(payload.behaviorStructConfidence?.objectionLevel || 0),
+                    answer_length: Number(payload.behaviorStructConfidence?.answerLength || 0),
+                    empathy_effect: Number(payload.behaviorStructConfidence?.empathyEffect || 0),
+                  },
+                },
+              }),
+            });
+            await loadPersonasFromApi();
             renderWorkspaceView('Персоны', currentLogin);
           },
         });
@@ -529,23 +632,22 @@ export function RightPanel() {
           draftBadge.className = 'persona-status-inline is-draft';
           draftBadge.textContent = 'DRAFT';
           actions.append(draftBadge);
+        } else if (String(persona.status || '').toLowerCase() !== 'active') {
+          const draftBadge = document.createElement('span');
+          draftBadge.className = 'persona-status-inline is-draft';
+          draftBadge.textContent = 'DRAFT';
+          actions.append(draftBadge);
         }
 
         const copyBtn = document.createElement('button');
         copyBtn.className = 'persona-mini-btn';
         copyBtn.type = 'button';
         copyBtn.textContent = '⧉';
-        copyBtn.title = 'Клонировать (мок)';
-        copyBtn.addEventListener('click', () => {
+        copyBtn.title = 'Клонировать';
+        copyBtn.addEventListener('click', async () => {
           if (persona._isDraft) return;
-          personasStore = [
-            {
-              ...persona,
-              id: `persona_${Date.now()}`,
-              name: `${persona.name} (копия)`,
-            },
-            ...personasStore,
-          ];
+          await api(`/personas/${encodeURIComponent(persona.id)}/clone`, { method: 'POST' });
+          await loadPersonasFromApi();
           renderWorkspaceView('Персоны', currentLogin);
         });
 
@@ -553,72 +655,165 @@ export function RightPanel() {
         editBtn.className = 'persona-mini-btn';
         editBtn.type = 'button';
         editBtn.textContent = '✎';
-        editBtn.title = persona._isDraft ? 'Продолжить черновик' : 'Редактировать (мок)';
+        editBtn.title = persona._isDraft ? 'Продолжить черновик' : 'Редактировать';
         editBtn.addEventListener('click', () => {
           const slotData = persona._isDraft ? readPersonaDraftStore()[persona._draftSlot] : null;
           const draftData = slotData?.data || {};
           openPersonaWizard({
             mode: persona._isDraft ? (persona._draftSlot === 'create' ? 'create' : 'edit') : 'edit',
+            personaId: !persona._isDraft ? persona.id : '',
             draftSlotOverride: persona._isDraft ? persona._draftSlot : '',
             initialData: {
               name: draftData.name || persona.name,
               description: draftData.description || persona.summary,
-              language: draftData.language || persona.language || 'Русский',
+              age: Number(draftData.age || persona.age || 35),
+              clientType: String(draftData.clientType || persona.clientType || ''),
               greeting: draftData.greeting || '',
               behavior: draftData.behavior || persona.prompt || '',
-              avatarGender: draftData.avatarGender || 'male',
-              avatarId: draftData.avatarId || 'male_senior_1',
+              avatarGender: draftData.avatarGender || persona.avatarGender || 'male',
+              avatarId: draftData.avatarId || persona.avatarId || 'male_senior_1',
+              behaviorMode: draftData.behaviorMode || persona.behaviorMode || 'free',
+              behaviorStruct:
+                draftData.behaviorStruct ||
+                persona.behaviorStruct || {
+                  communicationStyle: 'unknown',
+                  decisionSpeed: 'unknown',
+                  openness: 'unknown',
+                  pressureReaction: 'unknown',
+                  objectionLevel: 'unknown',
+                  answerLength: 'unknown',
+                  empathyEffect: 'unknown',
+                  extra: '',
+                },
+              behaviorStructConfidence:
+                draftData.behaviorStructConfidence ||
+                persona.behaviorStructConfidence || {
+                  communicationStyle: 0,
+                  decisionSpeed: 0,
+                  openness: 0,
+                  pressureReaction: 0,
+                  objectionLevel: 0,
+                  answerLength: 0,
+                  empathyEffect: 0,
+                },
             },
-            onSave: (payload) => {
+            onSave: async (payload) => {
               if (persona._isDraft) {
-                personasStore = [
-                  {
-                    id: `persona_${Date.now()}`,
-                    name: payload.name,
-                    subtitle: 'Новая персона',
-                    complexity: 'Сложность: настраиваемая',
-                    summary: payload.description || 'Описание не задано',
-                    language: payload.language || 'Русский',
-                    tier: 'Стандартный',
-                    prompt: payload.behavior || 'Поведение будет добавлено позже.',
-                    avatarId: payload.avatarId || 'male_senior_1',
-                  },
-                  ...personasStore,
-                ];
+                await api('/personas', {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    persona: {
+                      name: payload.name,
+                      description: payload.description || '',
+                      age: Number(payload.age || 0),
+                      client_type: payload.clientType || '',
+                      avatar_gender: payload.avatarGender || 'male',
+                      avatar_id: payload.avatarId || 'male_senior_1',
+                      greeting: payload.greeting || '',
+                      behavior: payload.behavior || '',
+                      behavior_mode: payload.behaviorMode || 'free',
+                      behavior_struct: {
+                        communication_style: payload.behaviorStruct?.communicationStyle || '',
+                        decision_speed: payload.behaviorStruct?.decisionSpeed || '',
+                        openness: payload.behaviorStruct?.openness || '',
+                        pressure_reaction: payload.behaviorStruct?.pressureReaction || '',
+                        objection_level: payload.behaviorStruct?.objectionLevel || '',
+                        answer_length: payload.behaviorStruct?.answerLength || '',
+                        empathy_effect: payload.behaviorStruct?.empathyEffect || '',
+                        extra: payload.behaviorStruct?.extra || '',
+                      },
+                      behavior_struct_confidence: {
+                        communication_style: Number(payload.behaviorStructConfidence?.communicationStyle || 0),
+                        decision_speed: Number(payload.behaviorStructConfidence?.decisionSpeed || 0),
+                        openness: Number(payload.behaviorStructConfidence?.openness || 0),
+                        pressure_reaction: Number(payload.behaviorStructConfidence?.pressureReaction || 0),
+                        objection_level: Number(payload.behaviorStructConfidence?.objectionLevel || 0),
+                        answer_length: Number(payload.behaviorStructConfidence?.answerLength || 0),
+                        empathy_effect: Number(payload.behaviorStructConfidence?.empathyEffect || 0),
+                      },
+                    },
+                  }),
+                });
               } else {
-                personasStore = personasStore.map((item) =>
-                  item.id === persona.id
-                    ? {
-                        ...item,
-                        name: payload.name,
-                        summary: payload.description || item.summary,
-                        language: payload.language || item.language,
-                        prompt: payload.behavior || item.prompt,
-                        avatarId: payload.avatarId || item.avatarId,
-                      }
-                    : item,
-                );
+                await api(`/personas/${encodeURIComponent(persona.id)}`, {
+                  method: 'PATCH',
+                  body: JSON.stringify({
+                    persona: {
+                      name: payload.name,
+                      description: payload.description || '',
+                      age: Number(payload.age || 0),
+                      client_type: payload.clientType || '',
+                      avatar_gender: payload.avatarGender || 'male',
+                      avatar_id: payload.avatarId || 'male_senior_1',
+                      greeting: payload.greeting || '',
+                      behavior: payload.behavior || '',
+                      behavior_mode: payload.behaviorMode || 'free',
+                      behavior_struct: {
+                        communication_style: payload.behaviorStruct?.communicationStyle || '',
+                        decision_speed: payload.behaviorStruct?.decisionSpeed || '',
+                        openness: payload.behaviorStruct?.openness || '',
+                        pressure_reaction: payload.behaviorStruct?.pressureReaction || '',
+                        objection_level: payload.behaviorStruct?.objectionLevel || '',
+                        answer_length: payload.behaviorStruct?.answerLength || '',
+                        empathy_effect: payload.behaviorStruct?.empathyEffect || '',
+                        extra: payload.behaviorStruct?.extra || '',
+                      },
+                      behavior_struct_confidence: {
+                        communication_style: Number(payload.behaviorStructConfidence?.communicationStyle || 0),
+                        decision_speed: Number(payload.behaviorStructConfidence?.decisionSpeed || 0),
+                        openness: Number(payload.behaviorStructConfidence?.openness || 0),
+                        pressure_reaction: Number(payload.behaviorStructConfidence?.pressureReaction || 0),
+                        objection_level: Number(payload.behaviorStructConfidence?.objectionLevel || 0),
+                        answer_length: Number(payload.behaviorStructConfidence?.answerLength || 0),
+                        empathy_effect: Number(payload.behaviorStructConfidence?.empathyEffect || 0),
+                      },
+                    },
+                  }),
+                });
               }
+              await loadPersonasFromApi();
               renderWorkspaceView('Персоны', currentLogin);
             },
           });
         });
 
-        actions.append(copyBtn, editBtn);
+        let publishBtn = null;
+        if (!persona._isDraft && String(persona.status || '').toLowerCase() !== 'active') {
+          publishBtn = document.createElement('button');
+          publishBtn.className = 'persona-mini-btn';
+          publishBtn.type = 'button';
+          publishBtn.textContent = '✓';
+          publishBtn.title = 'Опубликовать персону';
+          publishBtn.addEventListener('click', async () => {
+            try {
+              await api(`/personas/${encodeURIComponent(persona.id)}/publish`, { method: 'POST' });
+              await loadPersonasFromApi();
+              renderWorkspaceView('Персоны', currentLogin);
+            } catch (error) {
+              window.alert(error?.message || 'Не удалось опубликовать персону.');
+            }
+          });
+        }
+
+        if (publishBtn) {
+          actions.append(copyBtn, publishBtn, editBtn);
+        } else {
+          actions.append(copyBtn, editBtn);
+        }
         top.append(avatar, titleGroup, actions);
 
-        const promptValue = String(persona.prompt || '').trim();
-        const promptLabel = document.createElement('p');
-        promptLabel.className = 'persona-card-label';
-        promptLabel.textContent = 'Системный промпт';
+        const descriptionValue = String(persona.summary || '').trim();
+        const descriptionLabel = document.createElement('p');
+        descriptionLabel.className = 'persona-card-label';
+        descriptionLabel.textContent = 'Описание';
 
-        const promptText = document.createElement('p');
-        promptText.className = 'persona-card-prompt';
-        promptText.textContent = promptValue || 'Пока не заполнен';
-        if (!promptValue) {
-          promptText.classList.add('is-placeholder');
+        const descriptionText = document.createElement('p');
+        descriptionText.className = 'persona-card-prompt';
+        descriptionText.textContent = descriptionValue || 'Пока не заполнено';
+        if (!descriptionValue) {
+          descriptionText.classList.add('is-placeholder');
         }
-        cardEl.append(top, promptLabel, promptText);
+        cardEl.append(top, descriptionLabel, descriptionText);
         personasWrap.append(cardEl);
       });
       if (!personaCards.length) {
@@ -643,6 +838,7 @@ export function RightPanel() {
     initialData = null,
     onSave,
     draftSlotOverride = '',
+    personaId = '',
   }) => {
     const layer = document.createElement('div');
     layer.className = 'scenario-wizard-layer';
@@ -656,13 +852,32 @@ export function RightPanel() {
     const draft = {
       name: initialData?.name || 'Александр — Персона 1. Доминирующий',
       description: initialData?.description ?? '',
+      age: Number(initialData?.age || 35),
+      clientType: String(initialData?.clientType || ''),
       avatarGender: initialData?.avatarGender || 'male',
-      language: 'Русский',
       avatarId: initialData?.avatarId || 'male_senior_1',
-      greeting: initialData?.greeting || 'Слушаю! Что у вас?',
-      behavior:
-        initialData?.behavior ||
-        'Ты быстро анализируешь и принимаешь решения. Не любишь лишние объяснения и неструктурированные ответы. Говоришь кратко, ценишь конкретику и понятные аргументы.',
+      greeting: initialData?.greeting || '',
+      behaviorMode: initialData?.behaviorMode || 'free',
+      behaviorStruct: {
+        communicationStyle: initialData?.behaviorStruct?.communicationStyle || 'unknown',
+        decisionSpeed: initialData?.behaviorStruct?.decisionSpeed || 'unknown',
+        openness: initialData?.behaviorStruct?.openness || 'unknown',
+        pressureReaction: initialData?.behaviorStruct?.pressureReaction || 'unknown',
+        objectionLevel: initialData?.behaviorStruct?.objectionLevel || 'unknown',
+        answerLength: initialData?.behaviorStruct?.answerLength || 'unknown',
+        empathyEffect: initialData?.behaviorStruct?.empathyEffect || 'unknown',
+        extra: initialData?.behaviorStruct?.extra || '',
+      },
+      behaviorStructConfidence: {
+        communicationStyle: Number(initialData?.behaviorStructConfidence?.communicationStyle || 0),
+        decisionSpeed: Number(initialData?.behaviorStructConfidence?.decisionSpeed || 0),
+        openness: Number(initialData?.behaviorStructConfidence?.openness || 0),
+        pressureReaction: Number(initialData?.behaviorStructConfidence?.pressureReaction || 0),
+        objectionLevel: Number(initialData?.behaviorStructConfidence?.objectionLevel || 0),
+        answerLength: Number(initialData?.behaviorStructConfidence?.answerLength || 0),
+        empathyEffect: Number(initialData?.behaviorStructConfidence?.empathyEffect || 0),
+      },
+      behavior: initialData?.behavior || '',
     };
     let step = 0;
     let dirty = false;
@@ -672,6 +887,43 @@ export function RightPanel() {
     if (savedDraft && typeof savedDraft === 'object' && savedDraft.data) {
       Object.assign(draft, savedDraft.data);
       step = Math.max(0, Math.min(2, Number(savedDraft.step || 0)));
+    }
+    if (!draft.behaviorStruct || typeof draft.behaviorStruct !== 'object') {
+      draft.behaviorStruct = {
+        communicationStyle: 'unknown',
+        decisionSpeed: 'unknown',
+        openness: 'unknown',
+        pressureReaction: 'unknown',
+        objectionLevel: 'unknown',
+        answerLength: 'unknown',
+        empathyEffect: 'unknown',
+        extra: '',
+      };
+    }
+    if (!draft.behaviorStructConfidence || typeof draft.behaviorStructConfidence !== 'object') {
+      draft.behaviorStructConfidence = {
+        communicationStyle: 0,
+        decisionSpeed: 0,
+        openness: 0,
+        pressureReaction: 0,
+        objectionLevel: 0,
+        answerLength: 0,
+        empathyEffect: 0,
+      };
+    }
+    const normalizeStructValue = (v) => {
+      const s = String(v || '').trim();
+      return s ? s : 'unknown';
+    };
+    draft.behaviorStruct.communicationStyle = normalizeStructValue(draft.behaviorStruct.communicationStyle);
+    draft.behaviorStruct.decisionSpeed = normalizeStructValue(draft.behaviorStruct.decisionSpeed);
+    draft.behaviorStruct.openness = normalizeStructValue(draft.behaviorStruct.openness);
+    draft.behaviorStruct.pressureReaction = normalizeStructValue(draft.behaviorStruct.pressureReaction);
+    draft.behaviorStruct.objectionLevel = normalizeStructValue(draft.behaviorStruct.objectionLevel);
+    draft.behaviorStruct.answerLength = normalizeStructValue(draft.behaviorStruct.answerLength);
+    draft.behaviorStruct.empathyEffect = normalizeStructValue(draft.behaviorStruct.empathyEffect);
+    if (draft.behaviorMode !== 'free' && draft.behaviorMode !== 'structured') {
+      draft.behaviorMode = 'free';
     }
 
     const markDirty = () => {
@@ -790,7 +1042,7 @@ export function RightPanel() {
     const nextBtn = document.createElement('button');
     nextBtn.className = 'wizard-btn is-primary';
     nextBtn.type = 'button';
-    nextBtn.addEventListener('click', () => {
+    nextBtn.addEventListener('click', async () => {
       const issue = validateStep(step);
       if (issue) {
         errors.className = 'scenario-step-errors';
@@ -804,12 +1056,27 @@ export function RightPanel() {
         render();
         return;
       }
-      onSave?.({ ...draft });
-      const nextStore = readPersonaDraftStore();
-      delete nextStore[draftSlot];
-      writePersonaDraftStore(nextStore);
-      dirty = false;
-      closeWizard(true);
+      if (draft.behaviorMode === 'structured') {
+        draft.behavior = composeStructuredBehavior();
+      } else {
+        const inferred = inferBehaviorStructFromText(draft.behavior);
+        draft.behaviorStruct = {
+          ...draft.behaviorStruct,
+          ...inferred.behaviorStruct,
+        };
+        draft.behaviorStructConfidence = inferred.behaviorStructConfidence;
+      }
+      try {
+        await Promise.resolve(onSave?.({ ...draft, personaId }));
+        const nextStore = readPersonaDraftStore();
+        delete nextStore[draftSlot];
+        writePersonaDraftStore(nextStore);
+        dirty = false;
+        closeWizard(true);
+      } catch (error) {
+        errors.className = 'scenario-step-errors';
+        errors.textContent = error?.message || 'Не удалось сохранить персону.';
+      }
     });
 
     saveDraftBtn.addEventListener('click', () => {
@@ -827,6 +1094,10 @@ export function RightPanel() {
     const validateStep = (stepIdx) => {
       if (stepIdx === 0) {
         if (!draft.name || draft.name.trim().length < 2) return 'Укажите имя персоны (минимум 2 символа).';
+        if (!Number(draft.age) || Number(draft.age) < 18 || Number(draft.age) > 90) {
+          return 'Укажите возраст персоны в диапазоне 18..90.';
+        }
+        if (!draft.clientType) return 'Выберите тип клиента.';
       }
       if (stepIdx === 1) {
         if (!draft.avatarGender) return 'Выберите пол аватара.';
@@ -835,6 +1106,98 @@ export function RightPanel() {
     };
 
     const renderCounter = (value, max) => `${(value || '').length}/${max}`;
+
+    const composeStructuredBehavior = () => {
+      const s = draft.behaviorStruct || {};
+      const view = (v) => (String(v || 'unknown') === 'unknown' ? 'не указано' : v);
+      const lines = [
+        'Параметры поведения персоны:',
+        `- Манера общения: ${view(s.communicationStyle)}`,
+        `- Скорость принятия решений: ${view(s.decisionSpeed)}`,
+        `- Открытость в диалоге: ${view(s.openness)}`,
+        `- Реакция на давление: ${view(s.pressureReaction)}`,
+        `- Частота возражений: ${view(s.objectionLevel)}`,
+        `- Длина ответов: ${view(s.answerLength)}`,
+        `- Влияние эмпатии: ${view(s.empathyEffect)}`,
+      ];
+      const extra = String(s.extra || '').trim();
+      if (extra) {
+        lines.push('', 'Дополнительно:', extra);
+      }
+      return lines.join('\n');
+    };
+
+    const inferBehaviorStructFromText = (text) => {
+      const raw = String(text || '').toLowerCase();
+      const has = (list) => list.some((w) => raw.includes(w));
+      const pick = (candidates) => {
+        for (const item of candidates) {
+          if (has(item.keywords)) return item;
+        }
+        return { value: 'unknown', confidence: 0 };
+      };
+
+      const result = {
+        communicationStyle: pick([
+          { value: 'эмоциональный', confidence: 85, keywords: ['эмоцион', 'энергич', 'вдохнов'] },
+          { value: 'напористый', confidence: 85, keywords: ['напорист', 'жестк', 'давит', 'требовательн'] },
+          { value: 'деловой', confidence: 80, keywords: ['делов', 'по делу', 'конкрет', 'структур'] },
+          { value: 'спокойный', confidence: 80, keywords: ['спокойн', 'ровн', 'сдержан'] },
+        ]),
+        decisionSpeed: pick([
+          { value: 'быстро', confidence: 85, keywords: ['быстро реш', 'сразу реш', 'моментально', 'оперативно'] },
+          { value: 'долго', confidence: 85, keywords: ['долго', 'подум', 'взвеш', 'не спеш'] },
+          { value: 'средне', confidence: 70, keywords: ['средне', 'обычно'] },
+        ]),
+        openness: pick([
+          { value: 'закрытый', confidence: 85, keywords: ['закрыт', 'не раскры', 'не расска', 'коротко'] },
+          { value: 'открытый', confidence: 85, keywords: ['открыт', 'подробно', 'делится', 'охотно'] },
+          { value: 'нейтральный', confidence: 70, keywords: ['нейтральн'] },
+        ]),
+        pressureReaction: pick([
+          { value: 'резко негативная', confidence: 90, keywords: ['не люблю давление', 'раздраж', 'резко', 'агрессив'] },
+          { value: 'терпимая', confidence: 80, keywords: ['терпим', 'спокойно реаг', 'нормально к давлению'] },
+          { value: 'умеренная', confidence: 70, keywords: ['умерен', 'настораж', 'чувствителен к давлению'] },
+        ]),
+        objectionLevel: pick([
+          { value: 'высокая', confidence: 85, keywords: ['много возраж', 'часто возраж', 'скептич', 'сомнева'] },
+          { value: 'низкая', confidence: 80, keywords: ['редко возраж', 'доверяет', 'легко соглаша'] },
+          { value: 'средняя', confidence: 70, keywords: ['средняя', 'умеренно возраж'] },
+        ]),
+        answerLength: pick([
+          { value: 'коротко', confidence: 85, keywords: ['кратко', 'коротко', 'без лишних', 'по делу'] },
+          { value: 'развернуто', confidence: 85, keywords: ['развернуто', 'подробно', 'длинно'] },
+          { value: 'средне', confidence: 70, keywords: ['средне', 'умеренно подробно'] },
+        ]),
+        empathyEffect: pick([
+          { value: 'смягчается', confidence: 85, keywords: ['смягча', 'эмпатия помогает', 'при эмпатии лучше'] },
+          { value: 'не смягчается', confidence: 85, keywords: ['не смягча', 'эмпатия не влияет', 'жестко держит позицию'] },
+          { value: 'нейтрально', confidence: 70, keywords: ['нейтрально', 'почти не влияет'] },
+        ]),
+      };
+
+      return {
+        behaviorStruct: {
+          communicationStyle: result.communicationStyle.value,
+          decisionSpeed: result.decisionSpeed.value,
+          openness: result.openness.value,
+          pressureReaction: result.pressureReaction.value,
+          objectionLevel: result.objectionLevel.value,
+          answerLength: result.answerLength.value,
+          empathyEffect: result.empathyEffect.value,
+          extra: draft.behaviorStruct.extra || '',
+        },
+        behaviorStructConfidence: {
+          communicationStyle: result.communicationStyle.confidence,
+          decisionSpeed: result.decisionSpeed.confidence,
+          openness: result.openness.confidence,
+          pressureReaction: result.pressureReaction.confidence,
+          objectionLevel: result.objectionLevel.confidence,
+          answerLength: result.answerLength.confidence,
+          empathyEffect: result.empathyEffect.confidence,
+        },
+      };
+    };
 
     const buildStep1 = () => {
       const cardEl = document.createElement('section');
@@ -862,6 +1225,49 @@ export function RightPanel() {
       });
       fieldName.append(nameInput, nameCounter);
 
+      const profileRow = document.createElement('div');
+      profileRow.className = 'wizard-row wizard-row-2';
+
+      const ageField = document.createElement('div');
+      ageField.className = 'wizard-field';
+      ageField.innerHTML = '<label class="wizard-label">Возраст <b>*</b></label>';
+      const ageInput = document.createElement('input');
+      ageInput.className = 'wizard-input';
+      ageInput.type = 'number';
+      ageInput.min = '18';
+      ageInput.max = '90';
+      ageInput.value = String(draft.age || 35);
+      ageInput.addEventListener('input', () => {
+        draft.age = Number(ageInput.value || 0);
+        markDirty();
+      });
+      ageField.append(ageInput);
+
+      const typeField = document.createElement('div');
+      typeField.className = 'wizard-field';
+      typeField.innerHTML = '<label class="wizard-label">Тип клиента <b>*</b></label>';
+      const typeSelect = document.createElement('select');
+      typeSelect.className = 'wizard-select';
+      [
+        { value: '', label: 'Выберите тип клиента' },
+        { value: 'student', label: 'Студент' },
+        { value: 'working', label: 'Работающий' },
+        { value: 'retired', label: 'Пенсионер' },
+        { value: 'retired_working', label: 'Пенсионер + работающий' },
+      ].forEach((opt) => {
+        const el = document.createElement('option');
+        el.value = opt.value;
+        el.textContent = opt.label;
+        if (draft.clientType === opt.value) el.selected = true;
+        typeSelect.append(el);
+      });
+      typeSelect.addEventListener('change', () => {
+        draft.clientType = typeSelect.value;
+        markDirty();
+      });
+      typeField.append(typeSelect);
+      profileRow.append(ageField, typeField);
+
       const fieldDescription = document.createElement('div');
       fieldDescription.className = 'wizard-field';
       fieldDescription.innerHTML = '<label class="wizard-label">Описание (опционально)</label>';
@@ -883,7 +1289,7 @@ export function RightPanel() {
         markDirty();
       });
       fieldDescription.append(descriptionInput, descriptionHelp, descriptionCounter);
-      cardEl.append(titleEl, subtitleEl, fieldName, fieldDescription);
+      cardEl.append(titleEl, subtitleEl, fieldName, profileRow, fieldDescription);
       return cardEl;
     };
 
@@ -902,6 +1308,12 @@ export function RightPanel() {
 
       const picker = document.createElement('div');
       picker.className = 'wizard-field';
+      const genderAvatars = PERSONA_AVATARS_MOCK.filter(
+        (avatar) => !avatar.gender || avatar.gender === draft.avatarGender,
+      );
+      if (!genderAvatars.some((avatar) => avatar.id === draft.avatarId)) {
+        draft.avatarId = genderAvatars[0]?.id || '';
+      }
       const genderLabel = document.createElement('label');
       genderLabel.className = 'wizard-label';
       genderLabel.innerHTML = 'Пол аватара <b>*</b>';
@@ -914,6 +1326,8 @@ export function RightPanel() {
       maleBtn.textContent = '👨 Мужской';
       maleBtn.addEventListener('click', () => {
         draft.avatarGender = 'male';
+        const firstMale = PERSONA_AVATARS_MOCK.find((avatar) => avatar.gender === 'male');
+        if (firstMale) draft.avatarId = firstMale.id;
         markDirty();
         render();
       });
@@ -924,6 +1338,8 @@ export function RightPanel() {
       femaleBtn.textContent = '👩 Женский';
       femaleBtn.addEventListener('click', () => {
         draft.avatarGender = 'female';
+        const firstFemale = PERSONA_AVATARS_MOCK.find((avatar) => avatar.gender === 'female');
+        if (firstFemale) draft.avatarId = firstFemale.id;
         markDirty();
         render();
       });
@@ -933,8 +1349,7 @@ export function RightPanel() {
       avatarLabel.textContent = 'Выберите аватар';
       const grid = document.createElement('div');
       grid.className = 'persona-avatar-grid';
-      PERSONA_AVATARS_MOCK.filter((avatar) => !avatar.gender || avatar.gender === draft.avatarGender).forEach(
-        (avatar) => {
+      genderAvatars.forEach((avatar) => {
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'persona-avatar-item';
@@ -992,41 +1407,230 @@ export function RightPanel() {
       cardEl.className = 'wizard-card';
       const titleEl = document.createElement('h3');
       titleEl.className = 'wizard-card-title';
-      titleEl.textContent = 'Приветствие и поведение';
+      titleEl.textContent = 'Поведение персоны';
       const subtitleEl = document.createElement('p');
       subtitleEl.className = 'wizard-help';
-      subtitleEl.textContent = 'Настройте приветствие и поведение персоны.';
+      subtitleEl.textContent =
+        'Выберите способ настройки: свободный текст или структурированные параметры.';
 
-      const greetingField = document.createElement('div');
-      greetingField.className = 'wizard-field';
-      greetingField.innerHTML = '<label class="wizard-label">Приветственное сообщение (опционально)</label>';
-      const greetingInput = document.createElement('input');
-      greetingInput.className = 'wizard-input';
-      greetingInput.maxLength = 220;
-      greetingInput.value = draft.greeting;
-      const greetingHelp = document.createElement('div');
-      greetingHelp.className = 'wizard-help';
-      greetingHelp.textContent =
-        'Если приветственное сообщение оставить пустым, тогда пользователь должен начать общение.';
-      greetingInput.addEventListener('input', () => {
-        draft.greeting = greetingInput.value;
-        markDirty();
-      });
-      greetingField.append(greetingInput, greetingHelp);
+      const modeField = document.createElement('div');
+      modeField.className = 'wizard-field';
+      modeField.innerHTML = '<label class="wizard-label">Способ настройки <b>*</b></label>';
+      const modeWrap = document.createElement('div');
+      modeWrap.className = 'persona-gender-toggle';
 
-      const behaviorField = document.createElement('div');
-      behaviorField.className = 'wizard-field';
-      behaviorField.innerHTML = '<label class="wizard-label">Поведение персоны (опционально)</label>';
-      const behaviorInput = document.createElement('textarea');
-      behaviorInput.className = 'wizard-textarea persona-behavior-input';
-      behaviorInput.rows = 12;
-      behaviorInput.value = draft.behavior;
-      behaviorInput.addEventListener('input', () => {
-        draft.behavior = behaviorInput.value;
+      const freeBtn = document.createElement('button');
+      freeBtn.type = 'button';
+      freeBtn.className = 'persona-gender-btn';
+      if (draft.behaviorMode === 'free') freeBtn.classList.add('is-active');
+      freeBtn.textContent = 'Свободный ввод';
+      freeBtn.addEventListener('click', () => {
+        draft.behaviorMode = 'free';
         markDirty();
+        render();
       });
-      behaviorField.append(behaviorInput);
-      cardEl.append(titleEl, subtitleEl, greetingField, behaviorField);
+
+      const structuredBtn = document.createElement('button');
+      structuredBtn.type = 'button';
+      structuredBtn.className = 'persona-gender-btn';
+      if (draft.behaviorMode === 'structured') structuredBtn.classList.add('is-active');
+      structuredBtn.textContent = 'Выбор параметров';
+      structuredBtn.addEventListener('click', () => {
+        draft.behaviorMode = 'structured';
+        markDirty();
+        render();
+      });
+      modeWrap.append(freeBtn, structuredBtn);
+      modeField.append(modeWrap);
+
+      const contentField = document.createElement('div');
+      contentField.className = 'wizard-field';
+      if (draft.behaviorMode === 'free') {
+        contentField.innerHTML = '<label class="wizard-label">Поведение персоны (свободный ввод)</label>';
+        const behaviorInput = document.createElement('textarea');
+        behaviorInput.className = 'wizard-textarea persona-behavior-input';
+        behaviorInput.rows = 12;
+        behaviorInput.value = draft.behavior;
+        behaviorInput.addEventListener('input', () => {
+          draft.behavior = behaviorInput.value;
+          markDirty();
+          const inferred = inferBehaviorStructFromText(draft.behavior);
+          extractedView.value = [
+            'Извлеченные параметры (предпросмотр):',
+            `- Манера общения: ${inferred.behaviorStruct.communicationStyle} (${inferred.behaviorStructConfidence.communicationStyle}%)`,
+            `- Скорость решений: ${inferred.behaviorStruct.decisionSpeed} (${inferred.behaviorStructConfidence.decisionSpeed}%)`,
+            `- Открытость: ${inferred.behaviorStruct.openness} (${inferred.behaviorStructConfidence.openness}%)`,
+            `- Реакция на давление: ${inferred.behaviorStruct.pressureReaction} (${inferred.behaviorStructConfidence.pressureReaction}%)`,
+            `- Частота возражений: ${inferred.behaviorStruct.objectionLevel} (${inferred.behaviorStructConfidence.objectionLevel}%)`,
+            `- Длина ответов: ${inferred.behaviorStruct.answerLength} (${inferred.behaviorStructConfidence.answerLength}%)`,
+            `- Влияние эмпатии: ${inferred.behaviorStruct.empathyEffect} (${inferred.behaviorStructConfidence.empathyEffect}%)`,
+          ].join('\n');
+        });
+        contentField.append(behaviorInput);
+        const inferBtn = document.createElement('button');
+        inferBtn.type = 'button';
+        inferBtn.className = 'wizard-inline-btn';
+        inferBtn.textContent = 'Автозаполнить параметры из текста';
+        inferBtn.addEventListener('click', () => {
+          const inferred = inferBehaviorStructFromText(draft.behavior);
+          draft.behaviorStruct = {
+            ...draft.behaviorStruct,
+            ...inferred.behaviorStruct,
+          };
+          draft.behaviorStructConfidence = inferred.behaviorStructConfidence;
+          markDirty();
+          render();
+        });
+        const extractField = document.createElement('div');
+        extractField.className = 'wizard-field';
+        extractField.innerHTML =
+          '<label class="wizard-label">Структурированные признаки (автоизвлечение из текста)</label>';
+        const extractedView = document.createElement('textarea');
+        extractedView.className = 'wizard-textarea';
+        extractedView.rows = 7;
+        extractedView.readOnly = true;
+        const initialInferred = inferBehaviorStructFromText(draft.behavior);
+        extractedView.value = [
+          'Извлеченные параметры (предпросмотр):',
+          `- Манера общения: ${initialInferred.behaviorStruct.communicationStyle} (${initialInferred.behaviorStructConfidence.communicationStyle}%)`,
+          `- Скорость решений: ${initialInferred.behaviorStruct.decisionSpeed} (${initialInferred.behaviorStructConfidence.decisionSpeed}%)`,
+          `- Открытость: ${initialInferred.behaviorStruct.openness} (${initialInferred.behaviorStructConfidence.openness}%)`,
+          `- Реакция на давление: ${initialInferred.behaviorStruct.pressureReaction} (${initialInferred.behaviorStructConfidence.pressureReaction}%)`,
+          `- Частота возражений: ${initialInferred.behaviorStruct.objectionLevel} (${initialInferred.behaviorStructConfidence.objectionLevel}%)`,
+          `- Длина ответов: ${initialInferred.behaviorStruct.answerLength} (${initialInferred.behaviorStructConfidence.answerLength}%)`,
+          `- Влияние эмпатии: ${initialInferred.behaviorStruct.empathyEffect} (${initialInferred.behaviorStructConfidence.empathyEffect}%)`,
+        ].join('\n');
+        extractField.append(inferBtn, extractedView);
+        contentField.append(extractField);
+      } else {
+        contentField.innerHTML =
+          '<label class="wizard-label">Параметры поведения (+дополнительное поле)</label>';
+        let previewTextarea = null;
+        const refreshStructuredPreview = () => {
+          if (previewTextarea) {
+            previewTextarea.value = composeStructuredBehavior();
+          }
+        };
+
+        const makeSelectField = (label, key, options) => {
+          const field = document.createElement('div');
+          field.className = 'wizard-field';
+          const labelEl = document.createElement('label');
+          labelEl.className = 'wizard-label';
+          labelEl.textContent = label;
+          const select = document.createElement('select');
+          select.className = 'wizard-select';
+          options.forEach((opt) => {
+            const el = document.createElement('option');
+            el.value = opt.value;
+            el.textContent = opt.label;
+            if ((draft.behaviorStruct?.[key] || '') === opt.value) el.selected = true;
+            select.append(el);
+          });
+          select.addEventListener('change', () => {
+            draft.behaviorStruct[key] = select.value;
+            draft.behaviorStructConfidence[key] = select.value === 'unknown' ? 0 : 100;
+            markDirty();
+            refreshStructuredPreview();
+          });
+          field.append(labelEl, select);
+          return field;
+        };
+
+        const grid = document.createElement('div');
+        grid.className = 'wizard-row wizard-row-2';
+        grid.append(
+          makeSelectField('Манера общения', 'communicationStyle', [
+            { value: 'unknown', label: 'Не указано' },
+            { value: 'спокойный', label: 'Спокойный' },
+            { value: 'деловой', label: 'Деловой' },
+            { value: 'эмоциональный', label: 'Эмоциональный' },
+            { value: 'напористый', label: 'Напористый' },
+          ]),
+          makeSelectField('Скорость решений', 'decisionSpeed', [
+            { value: 'unknown', label: 'Не указано' },
+            { value: 'быстро', label: 'Быстро' },
+            { value: 'средне', label: 'Средне' },
+            { value: 'долго', label: 'Долго' },
+          ]),
+        );
+
+        const grid2 = document.createElement('div');
+        grid2.className = 'wizard-row wizard-row-2';
+        grid2.append(
+          makeSelectField('Открытость', 'openness', [
+            { value: 'unknown', label: 'Не указано' },
+            { value: 'закрытый', label: 'Закрытый' },
+            { value: 'нейтральный', label: 'Нейтральный' },
+            { value: 'открытый', label: 'Открытый' },
+          ]),
+          makeSelectField('Реакция на давление', 'pressureReaction', [
+            { value: 'unknown', label: 'Не указано' },
+            { value: 'резко негативная', label: 'Резко негативная' },
+            { value: 'умеренная', label: 'Умеренная' },
+            { value: 'терпимая', label: 'Терпимая' },
+          ]),
+        );
+
+        const grid3 = document.createElement('div');
+        grid3.className = 'wizard-row wizard-row-2';
+        grid3.append(
+          makeSelectField('Частота возражений', 'objectionLevel', [
+            { value: 'unknown', label: 'Не указано' },
+            { value: 'низкая', label: 'Низкая' },
+            { value: 'средняя', label: 'Средняя' },
+            { value: 'высокая', label: 'Высокая' },
+          ]),
+          makeSelectField('Длина ответов', 'answerLength', [
+            { value: 'unknown', label: 'Не указано' },
+            { value: 'коротко', label: 'Коротко' },
+            { value: 'средне', label: 'Средне' },
+            { value: 'развернуто', label: 'Развернуто' },
+          ]),
+        );
+
+        const empathyRow = document.createElement('div');
+        empathyRow.className = 'wizard-row wizard-row-1';
+        empathyRow.append(
+          makeSelectField('Влияние эмпатии', 'empathyEffect', [
+            { value: 'unknown', label: 'Не указано' },
+            { value: 'смягчается', label: 'Смягчается при эмпатии' },
+            { value: 'нейтрально', label: 'Почти не влияет' },
+            { value: 'не смягчается', label: 'Не смягчается' },
+          ]),
+        );
+
+        const extraField = document.createElement('div');
+        extraField.className = 'wizard-field';
+        extraField.innerHTML =
+          '<label class="wizard-label">Дополнительно (то, чего нет в параметрах)</label>';
+        const extraInput = document.createElement('textarea');
+        extraInput.className = 'wizard-textarea';
+        extraInput.rows = 5;
+        extraInput.maxLength = 1200;
+        extraInput.value = draft.behaviorStruct.extra || '';
+        extraInput.addEventListener('input', () => {
+          draft.behaviorStruct.extra = extraInput.value;
+          markDirty();
+          refreshStructuredPreview();
+        });
+        extraField.append(extraInput);
+
+        const previewField = document.createElement('div');
+        previewField.className = 'wizard-field';
+        previewField.innerHTML = '<label class="wizard-label">Собранный текст поведения</label>';
+        const preview = document.createElement('textarea');
+        preview.className = 'wizard-textarea persona-behavior-input';
+        preview.rows = 8;
+        preview.readOnly = true;
+        previewTextarea = preview;
+        refreshStructuredPreview();
+        previewField.append(preview);
+
+        contentField.append(grid, grid2, grid3, empathyRow, extraField, previewField);
+      }
+
+      cardEl.append(titleEl, subtitleEl, modeField, contentField);
       return cardEl;
     };
 

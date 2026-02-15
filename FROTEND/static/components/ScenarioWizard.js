@@ -38,35 +38,7 @@ const ANALYSIS_FORMATS = [
   { id: "scores_examples", label: "Баллы + примеры фраз" },
   { id: "short_recommendations", label: "Короткий итог + 3 рекомендации" },
 ];
-const PERSONA_LIBRARY_MOCK = [
-  {
-    id: "persona_kseniya",
-    name: "Ксения",
-    subtitle: "",
-    description:
-      "Средняя-высокая сложность. Быстро решает, но может оказать давление на менее опытного продавца.",
-    instructions:
-      "Тебя зовут Ксения, тебе 45 лет. Ты лидер, ориентированный на результат. Ценишь время и эффективность.",
-  },
-  {
-    id: "persona_alexander",
-    name: "Александр",
-    subtitle: "Персона 1. Доминирующий",
-    description:
-      "Средняя-высокая сложность. Быстро решает, но может оказать давление на менее опытного продавца.",
-    instructions:
-      "Тебя зовут Александр, тебе 45 лет. Ты лидер, ориентированный на результат. Ценишь время и эффективность.",
-  },
-  {
-    id: "persona_olga",
-    name: "Ольга",
-    subtitle: "Персона 5. Новичок",
-    description:
-      "Сложность очень низкая. Базовый уровень, подходит для первого взаимодействия с продуктом.",
-    instructions:
-      "Тебя зовут Ольга, тебе 25 лет. Ты открытая и дружелюбная собеседница, легко вовлекаешься в диалог.",
-  },
-];
+const PERSONA_LIBRARY_MOCK = [];
 
 const PERSONA_PRESETS = {
   influencer: {
@@ -117,13 +89,37 @@ const DEFAULT_SCENARIO = {
     financial_profile: "moderate",
   },
   persona_selection: {
-    selected_persona_id: "persona_kseniya",
+    selected_persona_id: "",
+    selected_persona_snapshot: {
+      name: "",
+      description: "",
+      age: null,
+      client_type: "",
+      greeting: "",
+      behavior: "",
+      behavior_mode: "free",
+      behavior_struct: {
+        communication_style: "unknown",
+        decision_speed: "unknown",
+        openness: "unknown",
+        pressure_reaction: "unknown",
+        objection_level: "unknown",
+        answer_length: "unknown",
+        empathy_effect: "unknown",
+        extra: "",
+      },
+      avatar_id: "",
+      persona_status: "",
+      persona_version: 0,
+      persona_updated_at: "",
+    },
   },
   facts: {
     reason: "deposit_matured",
     reason_custom: "",
     goal: "preserve",
     goal_custom: "",
+    meeting_life_goal: "",
     horizon_months: 12,
     liquidity: "medium",
     amount: 300000,
@@ -293,6 +289,7 @@ export function mountScenariosWorkspace({ mount, newScenarioButton }) {
       products: [],
       technologies: [],
     },
+    personas: [],
     list: [],
     loading: true,
     error: "",
@@ -354,6 +351,15 @@ export function mountScenariosWorkspace({ mount, newScenarioButton }) {
     }
   };
 
+  const loadPersonas = async () => {
+    try {
+      const data = await api("/personas", { method: "GET" });
+      state.personas = Array.isArray(data?.items) ? data.items : [];
+    } catch (_) {
+      state.personas = [];
+    }
+  };
+
   const bindBeforeUnload = () => {
     if (beforeUnloadBound) return;
     beforeUnloadBound = true;
@@ -391,6 +397,16 @@ export function mountScenariosWorkspace({ mount, newScenarioButton }) {
     if (step === 2) {
       if (!data.facts?.reason) errors.push("Выберите причину обращения.");
       if (!data.facts?.goal) errors.push("Выберите цель клиента.");
+      if (String(data.facts?.reason || "") === "custom" && String(data.facts?.reason_custom || "").trim().length < 3) {
+        errors.push("Заполните свою причину обращения (минимум 3 символа).");
+      }
+      if (String(data.facts?.goal || "") === "custom" && String(data.facts?.goal_custom || "").trim().length < 3) {
+        errors.push("Заполните свою цель клиента (минимум 3 символа).");
+      }
+      const lifeGoal = String(data.facts?.meeting_life_goal || "").trim();
+      if (lifeGoal.length < 8 || lifeGoal.length > 300) {
+        errors.push("Жизненная цель клиента должна быть от 8 до 300 символов.");
+      }
       if (!Number(data.facts?.horizon_months)) errors.push("Укажите горизонт в месяцах.");
       if (!data.facts?.liquidity) errors.push("Укажите потребность в ликвидности.");
       if (!Number(data.facts?.amount) || Number(data.facts?.amount) < 10000) {
@@ -479,6 +495,7 @@ export function mountScenariosWorkspace({ mount, newScenarioButton }) {
   const openWizard = async ({ mode, scenarioId = null } = { mode: "create" }) => {
     setNotice("");
     await loadKnowledgeCatalog();
+    await loadPersonas();
     state.wizard = initialWizardState();
     state.wizard.open = true;
     state.wizard.mode = mode;
@@ -506,6 +523,57 @@ export function mountScenariosWorkspace({ mount, newScenarioButton }) {
       state.wizard.scenarioId = null;
       state.wizard.status = "draft";
       state.wizard.version = 1;
+    }
+
+    const personaSelection = state.wizard.data.persona_selection || {};
+    const selectedId = String(personaSelection.selected_persona_id || "");
+    const selectedSnapshot =
+      personaSelection.selected_persona_snapshot &&
+      typeof personaSelection.selected_persona_snapshot === "object"
+        ? personaSelection.selected_persona_snapshot
+        : {};
+    if (selectedId && !String(selectedSnapshot.name || "").trim()) {
+      const match = (state.personas || []).find((item) => String(item.id) === selectedId);
+      if (match) {
+        state.wizard.data.persona_selection = {
+          selected_persona_id: selectedId,
+          selected_persona_snapshot: {
+            name: String(match.name || ""),
+            description: String(match.description || ""),
+            age: match.age ?? null,
+            client_type: String(match.client_type || ""),
+            greeting: String(match.greeting || ""),
+            behavior: String(match.behavior || ""),
+            behavior_mode: String(match.behavior_mode || "free"),
+            behavior_struct:
+              match.behavior_struct && typeof match.behavior_struct === "object"
+                ? {
+                    communication_style: String(match.behavior_struct.communication_style || "unknown"),
+                    decision_speed: String(match.behavior_struct.decision_speed || "unknown"),
+                    openness: String(match.behavior_struct.openness || "unknown"),
+                    pressure_reaction: String(match.behavior_struct.pressure_reaction || "unknown"),
+                    objection_level: String(match.behavior_struct.objection_level || "unknown"),
+                    answer_length: String(match.behavior_struct.answer_length || "unknown"),
+                    empathy_effect: String(match.behavior_struct.empathy_effect || "unknown"),
+                    extra: String(match.behavior_struct.extra || ""),
+                  }
+                : {
+                    communication_style: "unknown",
+                    decision_speed: "unknown",
+                    openness: "unknown",
+                    pressure_reaction: "unknown",
+                    objection_level: "unknown",
+                    answer_length: "unknown",
+                    empathy_effect: "unknown",
+                    extra: "",
+                  },
+            avatar_id: String(match.avatar_id || ""),
+            persona_status: String(match.status || ""),
+            persona_version: Number(match.version || 0),
+            persona_updated_at: String(match.updated_at || ""),
+          },
+        };
+      }
     }
 
     renderWizard();
@@ -938,6 +1006,7 @@ export function mountScenariosWorkspace({ mount, newScenarioButton }) {
     renderList();
     await loadModels();
     await loadKnowledgeCatalog();
+    await loadPersonas();
     await loadScenarios();
     renderList();
     renderWizard();
@@ -1340,7 +1409,25 @@ function renderStep2(container, state, updateScenario) {
     )
   );
 
-  contextCard.append(contextRowTop, contextRowCustom, contextRowBottom);
+  const lifeGoalArea = createTextArea({
+    value: facts.meeting_life_goal || "",
+    rows: 3,
+    maxLength: 300,
+    placeholder: "Например: накопить на первый взнос по ипотеке в течение 2 лет.",
+  });
+  lifeGoalArea.addEventListener("input", () => {
+    updateScenario((draft) => {
+      draft.facts.meeting_life_goal = lifeGoalArea.value;
+    });
+  });
+  const lifeGoalField = createField(
+    "Жизненная цель клиента в этой встрече",
+    lifeGoalArea,
+    "Ключевая личная цель, которая делает мотивацию клиента реалистичной."
+  );
+  lifeGoalField.append(addCounter(lifeGoalArea, 300));
+
+  contextCard.append(contextRowTop, contextRowCustom, contextRowBottom, lifeGoalField);
   container.append(contextCard);
 
   const amountCard = createCard("Сумма и опыт");
@@ -1644,7 +1731,57 @@ function renderStep2(container, state, updateScenario) {
 
 function renderStep3(container, state, updateScenario) {
   const data = state.wizard.data;
-  const selectedId = data.persona_selection?.selected_persona_id || "";
+  const personaSelection = data.persona_selection || {};
+  const selectedId = personaSelection.selected_persona_id || "";
+  const snapshot =
+    personaSelection.selected_persona_snapshot &&
+    typeof personaSelection.selected_persona_snapshot === "object"
+      ? personaSelection.selected_persona_snapshot
+      : {};
+  const personas = Array.isArray(state.personas) && state.personas.length
+    ? state.personas
+    : PERSONA_LIBRARY_MOCK;
+  const selectedPersona = personas.find((item) => String(item.id) === String(selectedId));
+  const snapshotComparable = [
+    String(snapshot.name || "").trim(),
+    String(snapshot.description || "").trim(),
+    String(snapshot.age ?? "").trim(),
+    String(snapshot.client_type || "").trim(),
+    String(snapshot.greeting || "").trim(),
+    String(snapshot.behavior || "").trim(),
+    String(snapshot.behavior_mode || "").trim(),
+    String(snapshot.behavior_struct?.communication_style || "").trim(),
+    String(snapshot.behavior_struct?.decision_speed || "").trim(),
+    String(snapshot.behavior_struct?.openness || "").trim(),
+    String(snapshot.behavior_struct?.pressure_reaction || "").trim(),
+    String(snapshot.behavior_struct?.objection_level || "").trim(),
+    String(snapshot.behavior_struct?.answer_length || "").trim(),
+    String(snapshot.behavior_struct?.empathy_effect || "").trim(),
+    String(snapshot.behavior_struct?.extra || "").trim(),
+    String(snapshot.avatar_id || "").trim(),
+  ].join("||");
+  const selectedComparable = selectedPersona
+    ? [
+        String(selectedPersona.name || "").trim(),
+        String(selectedPersona.description || "").trim(),
+        String(selectedPersona.age ?? "").trim(),
+        String(selectedPersona.client_type || "").trim(),
+        String(selectedPersona.greeting || "").trim(),
+        String(selectedPersona.behavior || "").trim(),
+        String(selectedPersona.behavior_mode || "").trim(),
+        String(selectedPersona.behavior_struct?.communication_style || "").trim(),
+        String(selectedPersona.behavior_struct?.decision_speed || "").trim(),
+        String(selectedPersona.behavior_struct?.openness || "").trim(),
+        String(selectedPersona.behavior_struct?.pressure_reaction || "").trim(),
+        String(selectedPersona.behavior_struct?.objection_level || "").trim(),
+        String(selectedPersona.behavior_struct?.answer_length || "").trim(),
+        String(selectedPersona.behavior_struct?.empathy_effect || "").trim(),
+        String(selectedPersona.behavior_struct?.extra || "").trim(),
+        String(selectedPersona.avatar_id || selectedPersona.avatarId || "").trim(),
+      ].join("||")
+    : "";
+  const hasSnapshot = Boolean(String(snapshot.name || "").trim() || String(snapshot.behavior || "").trim());
+  const snapshotOutdated = Boolean(selectedPersona && hasSnapshot && snapshotComparable !== selectedComparable);
   container.innerHTML = "";
 
   const personaCard = createCard("Выбор персоны");
@@ -1658,33 +1795,172 @@ function renderStep3(container, state, updateScenario) {
 
   const list = document.createElement("div");
   list.className = "wizard-persona-library-list";
-  PERSONA_LIBRARY_MOCK.forEach((item) => {
+  personas.forEach((item) => {
     const card = document.createElement("button");
     card.type = "button";
     card.className = `wizard-persona-library-item ${selectedId === item.id ? "is-active" : ""}`;
     const title = item.subtitle ? `${item.name} - ${item.subtitle}` : item.name;
-    const initials = item.name.slice(0, 1).toUpperCase();
+    const initials = String(item.name || "П")
+      .slice(0, 1)
+      .toUpperCase();
+    const description = String(item.description || item.summary || "").trim();
+    const behavior = String(item.behavior || item.instructions || item.prompt || "").trim();
+    const greeting = String(item.greeting || "").trim();
+    const age = item.age ?? null;
+    const clientTypeMap = {
+      student: "Студент",
+      working: "Работающий",
+      retired: "Пенсионер",
+      retired_working: "Пенсионер + работающий",
+    };
+    const clientType = clientTypeMap[String(item.client_type || "")] || "Не указан";
     card.innerHTML = `
       <span class="wizard-persona-avatar">${esc(initials)}</span>
       <span class="wizard-persona-content">
         <span class="wizard-persona-name">${esc(title)}</span>
-        <span class="wizard-persona-meta"><b>Описание:</b> ${esc(item.description)}</span>
-        <span class="wizard-persona-meta"><b>Инструкция:</b> ${esc(item.instructions)}</span>
+        <span class="wizard-persona-meta"><b>Возраст/тип:</b> ${esc(age ? String(age) : "—")} / ${esc(clientType)}</span>
+        <span class="wizard-persona-meta"><b>Описание:</b> ${esc(description || "Пока не заполнено")}</span>
+        <span class="wizard-persona-meta"><b>Поведение:</b> ${esc(behavior || "Пока не заполнено")}</span>
       </span>
     `;
     card.addEventListener("click", () => {
       updateScenario((draft) => {
         draft.persona_selection = draft.persona_selection || {};
         draft.persona_selection.selected_persona_id = item.id;
+        draft.persona_selection.selected_persona_snapshot = {
+          name: String(item.name || ""),
+          description: description,
+          age: item.age ?? null,
+          client_type: String(item.client_type || ""),
+          greeting: greeting,
+          behavior: behavior,
+          behavior_mode: String(item.behavior_mode || "free"),
+          behavior_struct:
+            item.behavior_struct && typeof item.behavior_struct === "object"
+              ? {
+                  communication_style: String(item.behavior_struct.communication_style || "unknown"),
+                  decision_speed: String(item.behavior_struct.decision_speed || "unknown"),
+                  openness: String(item.behavior_struct.openness || "unknown"),
+                  pressure_reaction: String(item.behavior_struct.pressure_reaction || "unknown"),
+                  objection_level: String(item.behavior_struct.objection_level || "unknown"),
+                  answer_length: String(item.behavior_struct.answer_length || "unknown"),
+                  empathy_effect: String(item.behavior_struct.empathy_effect || "unknown"),
+                  extra: String(item.behavior_struct.extra || ""),
+                }
+              : {
+                  communication_style: "unknown",
+                  decision_speed: "unknown",
+                  openness: "unknown",
+                  pressure_reaction: "unknown",
+                  objection_level: "unknown",
+                  answer_length: "unknown",
+                  empathy_effect: "unknown",
+                  extra: "",
+                },
+          avatar_id: String(item.avatar_id || item.avatarId || ""),
+          persona_status: String(item.status || ""),
+          persona_version: Number(item.version || 0),
+          persona_updated_at: String(item.updated_at || ""),
+        };
       });
     });
     list.append(card);
   });
   personaCard.append(list);
+
+  const snapshotInfo = document.createElement("div");
+  snapshotInfo.className = "wizard-persona-snapshot";
+  const snapshotStatus = String(snapshot.persona_status || "не задан");
+  const snapshotVersion = Number(snapshot.persona_version || 0);
+  const snapshotUpdatedAt = String(snapshot.persona_updated_at || "");
+  const snapshotUpdatedText = snapshotUpdatedAt ? formatDateTime(snapshotUpdatedAt) : "—";
+  const snapshotClientTypeMap = {
+    student: "Студент",
+    working: "Работающий",
+    retired: "Пенсионер",
+    retired_working: "Пенсионер + работающий",
+  };
+  const snapshotClientType = snapshotClientTypeMap[String(snapshot.client_type || "")] || "Не указан";
+  const snapshotBehaviorModeMap = {
+    free: "Свободный ввод",
+    structured: "Выбор параметров",
+  };
+  const snapshotBehaviorMode =
+    snapshotBehaviorModeMap[String(snapshot.behavior_mode || "free")] || "Свободный ввод";
+  snapshotInfo.innerHTML = `
+    <p class="wizard-persona-note">
+      Сценарий хранит <b>snapshot</b> персоны (копию параметров на момент выбора).
+      Изменения персоны в разделе «Персоны» не применяются автоматически к уже сохраненному сценарию.
+    </p>
+    <p class="wizard-persona-note">
+      Текущий snapshot: статус <b>${esc(snapshotStatus)}</b>, версия <b>${esc(String(snapshotVersion || 0))}</b>, обновлен: <b>${esc(snapshotUpdatedText)}</b>.
+    </p>
+    <p class="wizard-persona-note">
+      Профиль snapshot: возраст <b>${esc(snapshot.age ? String(snapshot.age) : "—")}</b>, тип клиента <b>${esc(snapshotClientType)}</b>.
+    </p>
+    <p class="wizard-persona-note">
+      Режим поведения snapshot: <b>${esc(snapshotBehaviorMode)}</b>.
+    </p>
+  `;
+  if (snapshotOutdated && selectedPersona) {
+    const outdated = document.createElement("p");
+    outdated.className = "wizard-persona-note is-warning";
+    outdated.textContent =
+      "В библиотеке есть более новая версия персоны. Обновите snapshot, если хотите применить изменения к этому сценарию.";
+    const refreshBtn = document.createElement("button");
+    refreshBtn.type = "button";
+    refreshBtn.className = "wizard-inline-btn";
+    refreshBtn.textContent = "Обновить snapshot из персоны";
+    refreshBtn.addEventListener("click", () => {
+      updateScenario((draft) => {
+        draft.persona_selection = draft.persona_selection || {};
+        draft.persona_selection.selected_persona_id = selectedPersona.id;
+        draft.persona_selection.selected_persona_snapshot = {
+          name: String(selectedPersona.name || ""),
+          description: String(selectedPersona.description || ""),
+          age: selectedPersona.age ?? null,
+          client_type: String(selectedPersona.client_type || ""),
+          greeting: String(selectedPersona.greeting || ""),
+          behavior: String(selectedPersona.behavior || ""),
+          behavior_mode: String(selectedPersona.behavior_mode || "free"),
+          behavior_struct:
+            selectedPersona.behavior_struct && typeof selectedPersona.behavior_struct === "object"
+              ? {
+                  communication_style: String(selectedPersona.behavior_struct.communication_style || "unknown"),
+                  decision_speed: String(selectedPersona.behavior_struct.decision_speed || "unknown"),
+                  openness: String(selectedPersona.behavior_struct.openness || "unknown"),
+                  pressure_reaction: String(selectedPersona.behavior_struct.pressure_reaction || "unknown"),
+                  objection_level: String(selectedPersona.behavior_struct.objection_level || "unknown"),
+                  answer_length: String(selectedPersona.behavior_struct.answer_length || "unknown"),
+                  empathy_effect: String(selectedPersona.behavior_struct.empathy_effect || "unknown"),
+                  extra: String(selectedPersona.behavior_struct.extra || ""),
+                }
+              : {
+                  communication_style: "unknown",
+                  decision_speed: "unknown",
+                  openness: "unknown",
+                  pressure_reaction: "unknown",
+                  objection_level: "unknown",
+                  answer_length: "unknown",
+                  empathy_effect: "unknown",
+                  extra: "",
+                },
+          avatar_id: String(selectedPersona.avatar_id || selectedPersona.avatarId || ""),
+          persona_status: String(selectedPersona.status || ""),
+          persona_version: Number(selectedPersona.version || 0),
+          persona_updated_at: String(selectedPersona.updated_at || ""),
+        };
+      });
+    });
+    snapshotInfo.append(outdated, refreshBtn);
+  }
+  personaCard.append(snapshotInfo);
+
   const note = document.createElement("p");
   note.className = "wizard-persona-note";
-  note.textContent =
-    "Пока это мок-список. Параметры персоны сохранены и будут вынесены на страницу «Персона».";
+  note.textContent = personas.length
+    ? "Выберите сохраненную персону. Ее описание и поведение будут использоваться в роли клиента."
+    : "Пока нет персон. Сначала создайте персону в разделе «Персоны».";
   personaCard.append(note);
   container.append(personaCard);
 }
