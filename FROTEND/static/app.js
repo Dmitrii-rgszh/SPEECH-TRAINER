@@ -13,11 +13,42 @@ const micLevelBarEl = document.getElementById("micLevelBar");
 const micLevelTextEl = document.getElementById("micLevelText");
 const micDeviceSelectEl = document.getElementById("micDeviceSelect");
 const refreshMicBtn = document.getElementById("refreshMicBtn");
+const backToScenariosBtn = document.getElementById("backToScenariosBtn");
+const trainerTimerEl = document.getElementById("trainerTimer");
+const trainerTelemetryEl = document.getElementById("trainerTelemetry");
+const telemetryTrustFillEl = document.getElementById("telemetryTrustFill");
+const telemetryTrustValueEl = document.getElementById("telemetryTrustValue");
+const telemetryTrustDeltaEl = document.getElementById("telemetryTrustDelta");
+const telemetryEmpathyFillEl = document.getElementById("telemetryEmpathyFill");
+const telemetryEmpathyValueEl = document.getElementById("telemetryEmpathyValue");
+const telemetryEmpathyDeltaEl = document.getElementById("telemetryEmpathyDelta");
+const telemetryClarityFillEl = document.getElementById("telemetryClarityFill");
+const telemetryClarityValueEl = document.getElementById("telemetryClarityValue");
+const telemetryClarityDeltaEl = document.getElementById("telemetryClarityDelta");
+const telemetryValueLinkFillEl = document.getElementById("telemetryValueLinkFill");
+const telemetryValueLinkValueEl = document.getElementById("telemetryValueLinkValue");
+const telemetryValueLinkDeltaEl = document.getElementById("telemetryValueLinkDelta");
+const telemetryPressureFlagEl = document.getElementById("telemetryPressureFlag");
+const telemetryEmotionFlagEl = document.getElementById("telemetryEmotionFlag");
+const telemetryModeFlagEl = document.getElementById("telemetryModeFlag");
+const scenarioLaunchPanelEl = document.getElementById("scenarioLaunchPanel");
+const launchScenarioTitleEl = document.getElementById("launchScenarioTitle");
+const launchScenarioSummaryEl = document.getElementById("launchScenarioSummary");
+const launchScenarioBriefEl = document.getElementById("launchScenarioBrief");
+const startScenarioBtn = document.getElementById("startScenarioBtn");
+const stopScenarioBtn = document.getElementById("stopScenarioBtn");
 
 let chatSessionId = null;
 const scenarioId = (new URLSearchParams(window.location.search).get("scenario_id") || "").trim();
 let scenarioFirstSpeaker = "user";
 let initialClientTurnStarted = false;
+let scenarioLaunchStarted = false;
+let trainingActive = false;
+let scenarioShowTimer = false;
+let scenarioDurationMinutes = 15;
+let trainerTimerRemainingSec = 15 * 60;
+let trainerTimerInterval = null;
+let trainerTimerWarn30Played = false;
 let dialogLog = [];
 let scenarioRuntimeState = {
   trust_level: 50,
@@ -39,7 +70,14 @@ let scenarioRuntimeState = {
   used_objections: [],
   success_conditions_met: [],
   stop_conditions_met: [],
+  manager_quality: {
+    direct_answer_score: 0,
+    value_link_score: 0,
+    clarity_score: 0,
+    empathy_score: 0,
+  },
 };
+let prevTelemetrySnapshot = null;
 
 let audioContext;
 let mediaStream;
@@ -56,7 +94,7 @@ let calibrationSamples = 0;
 let lastVoiceMs = 0;
 let previewTimer = null;
 let previewInFlight = false;
-let autoRestart = false;
+let autoRestart = true;
 let userStopped = false;
 let ttsAudio = null;
 const avatarImg = document.getElementById("avatarImage");
@@ -65,15 +103,25 @@ let activeVideoUrl = null;
 let lipSyncAbort = null;
 let micRmsSmoothed = 0;
 let generationInFlight = false;
+const TRAINER_AVATAR_LIBRARY = {
+  male_senior_1: {
+    thumbSrc: "/static/assets/avatars/male_senior_close.png",
+    previewSrc: "/static/assets/avatars/male_senior_full.png",
+  },
+  female_1: {
+    thumbSrc: "/static/assets/avatars/female_1_close.png",
+    previewSrc: "/static/assets/avatars/female_1_full.png",
+  },
+};
 
-const BASE_SILENCE_THRESHOLD = 0.01;
+const BASE_SILENCE_THRESHOLD = 0.006;
 const SILENCE_LIMIT_MS = 3000;
-const MAX_RECORDING_MS = 30000;
+const MAX_RECORDING_MS = 120000;
 const PREVIEW_INTERVAL_MS = 1200;
 const PREVIEW_MIN_AUDIO_MS = 1200;
 const PREVIEW_WINDOW_MS = 8000;
-const MIN_DB_THRESHOLD = -50; // Более мягкий порог: тише отсекаем, но обычную речь не теряем
-const MIN_RMS_THRESHOLD = Math.pow(10, MIN_DB_THRESHOLD / 20); // ~0.01 для -40dB
+const MIN_DB_THRESHOLD = -20; // Жесткий noise gate: сильнее режет фоновые шумы
+const MIN_RMS_THRESHOLD = Math.pow(10, MIN_DB_THRESHOLD / 20);
 const MIC_DB_FLOOR = -70;
 const MIC_DB_CEIL = -10;
 const MIC_DEVICE_STORAGE_KEY = "rgsl_mic_device_id";
@@ -89,6 +137,222 @@ if (micDeviceSelectEl) {
     const value = micDeviceSelectEl.value || "";
     localStorage.setItem(MIC_DEVICE_STORAGE_KEY, value);
   });
+}
+if (startScenarioBtn) {
+  startScenarioBtn.addEventListener("click", startScenarioSession);
+}
+if (stopScenarioBtn) {
+  stopScenarioBtn.addEventListener("click", stopScenarioSession);
+}
+if (backToScenariosBtn) {
+  backToScenariosBtn.addEventListener("click", () => {
+    if (window.history.length > 1) {
+      window.history.back();
+      return;
+    }
+    window.location.href = "/";
+  });
+}
+
+function resolveAvatarSrcById(avatarId) {
+  const key = String(avatarId || "").trim();
+  return TRAINER_AVATAR_LIBRARY[key]?.previewSrc || "/avatar";
+}
+
+function formatCountdown(seconds) {
+  const total = Math.max(0, Number(seconds) || 0);
+  const mins = Math.floor(total / 60);
+  const secs = total % 60;
+  return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+function renderTrainerTimer() {
+  if (!trainerTimerEl) return;
+  if (!scenarioShowTimer) {
+    trainerTimerEl.classList.add("hidden");
+    trainerTimerEl.classList.remove("is-warning");
+    trainerTimerEl.classList.remove("is-critical");
+    return;
+  }
+  trainerTimerEl.classList.remove("hidden");
+  trainerTimerEl.textContent = formatCountdown(trainerTimerRemainingSec);
+  trainerTimerEl.classList.toggle(
+    "is-warning",
+    trainerTimerRemainingSec <= 120 && trainerTimerRemainingSec > 30
+  );
+  trainerTimerEl.classList.toggle("is-critical", trainerTimerRemainingSec <= 30);
+}
+
+function clampPercent(value) {
+  const n = Number(value || 0);
+  if (!Number.isFinite(n)) return 0;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+function setTelemetryDelta(el, current, previous) {
+  if (!el) return;
+  el.classList.remove("up", "down");
+  if (!Number.isFinite(previous)) {
+    el.textContent = "—";
+    return;
+  }
+  const delta = Math.round((Number(current) || 0) - previous);
+  if (delta > 0) {
+    el.textContent = `+${delta}`;
+    el.classList.add("up");
+  } else if (delta < 0) {
+    el.textContent = `${delta}`;
+    el.classList.add("down");
+  } else {
+    el.textContent = "0";
+  }
+}
+
+function setTelemetryMetric(fillEl, valueEl, deltaEl, value, prevValue) {
+  const normalized = clampPercent(value);
+  if (fillEl) fillEl.style.width = `${normalized}%`;
+  if (valueEl) valueEl.textContent = String(normalized);
+  setTelemetryDelta(deltaEl, normalized, prevValue);
+}
+
+function updateTelemetryPanel(state) {
+  if (!trainerTelemetryEl) return;
+  const runtime = state && typeof state === "object" ? state : {};
+  const quality =
+    runtime.manager_quality && typeof runtime.manager_quality === "object"
+      ? runtime.manager_quality
+      : {};
+
+  const current = {
+    trust: clampPercent(runtime.trust_level ?? 50),
+    empathy: clampPercent(quality.empathy_score ?? 0),
+    clarity: clampPercent(quality.clarity_score ?? 0),
+    valueLink: clampPercent(quality.value_link_score ?? 0),
+  };
+  const prev = prevTelemetrySnapshot || {};
+
+  setTelemetryMetric(
+    telemetryTrustFillEl,
+    telemetryTrustValueEl,
+    telemetryTrustDeltaEl,
+    current.trust,
+    Number(prev.trust)
+  );
+  setTelemetryMetric(
+    telemetryEmpathyFillEl,
+    telemetryEmpathyValueEl,
+    telemetryEmpathyDeltaEl,
+    current.empathy,
+    Number(prev.empathy)
+  );
+  setTelemetryMetric(
+    telemetryClarityFillEl,
+    telemetryClarityValueEl,
+    telemetryClarityDeltaEl,
+    current.clarity,
+    Number(prev.clarity)
+  );
+  setTelemetryMetric(
+    telemetryValueLinkFillEl,
+    telemetryValueLinkValueEl,
+    telemetryValueLinkDeltaEl,
+    current.valueLink,
+    Number(prev.valueLink)
+  );
+
+  const pressure = Boolean(runtime.pressure_detected);
+  const emotion = Boolean(runtime.emotional_trigger_hit);
+  const mode = String(runtime.response_mode_hint || "normal_dialog");
+
+  if (telemetryPressureFlagEl) {
+    telemetryPressureFlagEl.textContent = `Давление: ${pressure ? "да" : "нет"}`;
+    telemetryPressureFlagEl.classList.toggle("alert", pressure);
+  }
+  if (telemetryEmotionFlagEl) {
+    telemetryEmotionFlagEl.textContent = `Эмо-триггер: ${emotion ? "да" : "нет"}`;
+    telemetryEmotionFlagEl.classList.toggle("alert", emotion);
+  }
+  if (telemetryModeFlagEl) {
+    telemetryModeFlagEl.textContent = `Режим: ${mode}`;
+  }
+
+  prevTelemetrySnapshot = current;
+}
+
+function clearTrainerTimer() {
+  if (trainerTimerInterval) {
+    clearInterval(trainerTimerInterval);
+    trainerTimerInterval = null;
+  }
+}
+
+function resetTrainerTimerFromScenario() {
+  trainerTimerRemainingSec = Math.max(0, Math.round((Number(scenarioDurationMinutes) || 15) * 60));
+  trainerTimerWarn30Played = false;
+  renderTrainerTimer();
+}
+
+function playTimerWarningBeep() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(940, ctx.currentTime);
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.03);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.28);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.3);
+    osc.onended = () => {
+      try {
+        ctx.close();
+      } catch (_) {}
+    };
+  } catch (_) {
+    // ignore audio warning failures
+  }
+}
+
+function startTrainerTimer() {
+  clearTrainerTimer();
+  if (!scenarioShowTimer) {
+    renderTrainerTimer();
+    return;
+  }
+  resetTrainerTimerFromScenario();
+  trainerTimerInterval = setInterval(() => {
+    if (!trainingActive) {
+      clearTrainerTimer();
+      return;
+    }
+    trainerTimerRemainingSec = Math.max(0, trainerTimerRemainingSec - 1);
+    renderTrainerTimer();
+    if (trainerTimerRemainingSec <= 30 && !trainerTimerWarn30Played) {
+      trainerTimerWarn30Played = true;
+      playTimerWarningBeep();
+    }
+    if (trainerTimerRemainingSec <= 0) {
+      clearTrainerTimer();
+      stopScenarioSession("Тренировка завершена: время вышло.");
+    }
+  }, 1000);
+}
+
+function formatMoney(value, currency = "RUB") {
+  const num = Number(value || 0);
+  if (!Number.isFinite(num) || num <= 0) return "не указана";
+  const formatted = new Intl.NumberFormat("ru-RU", {
+    maximumFractionDigits: 0,
+  }).format(num);
+  if (String(currency || "RUB").toUpperCase() === "RUB") {
+    return `${formatted} рублей`;
+  }
+  return `${formatted} ${String(currency || "").toUpperCase()}`.trim();
 }
 
 function updateRuntimeSlotsFromManagerText(text) {
@@ -246,7 +510,7 @@ async function playTts(text, placeholder = null) {
     const resp = await fetch("/tts", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: clean }),
+      body: JSON.stringify({ text: clean, length_scale: 0.86 }),
     });
     if (!resp.ok) {
       if (placeholder) placeholder.textContent = clean;
@@ -255,13 +519,13 @@ async function playTts(text, placeholder = null) {
     const ttsBlob = await resp.blob();
     const ttsUrl = URL.createObjectURL(ttsBlob);
 
-    // 2. Генерируем LipSync видео (ждём завершения)
-    let videoUrl = null;
-    try {
-      videoUrl = await requestLipSyncAndWait(ttsBlob);
-    } catch (e) {
-      console.error("LipSync failed, playing audio only:", e);
-    }
+    // 2. ВРЕМЕННО: отключили LivePortrait/LipSync в цепочке.
+    // let videoUrl = null;
+    // try {
+    //   videoUrl = await requestLipSyncAndWait(ttsBlob);
+    // } catch (e) {
+    //   console.error("LipSync failed, playing audio only:", e);
+    // }
 
     // 3. Очищаем предыдущее аудио
     if (ttsAudio) {
@@ -274,22 +538,72 @@ async function playTts(text, placeholder = null) {
     // 4. Показываем текст в чате
     if (placeholder) placeholder.textContent = clean;
 
-    // 5. Показываем lip-sync видео с его встроенным аудио (самый точный sync)
-    if (videoUrl) {
-      showAvatarVideoWithAudio(videoUrl, ttsUrl);
-    } else {
-      // Нет видео - только аудио
-      ttsAudio = new Audio(ttsUrl);
+    // 5. Только TTS-аудио (без видео-синхронизации губ)
+    ttsAudio = new Audio(ttsUrl);
+    await new Promise((resolve) => {
       ttsAudio.onended = () => {
         URL.revokeObjectURL(ttsUrl);
         showAvatarImage();
+        resolve();
       };
-      await ttsAudio.play();
-    }
+      ttsAudio.onerror = () => {
+        URL.revokeObjectURL(ttsUrl);
+        showAvatarImage();
+        resolve();
+      };
+      ttsAudio.play().catch(() => resolve());
+    });
   } catch (e) {
     console.error("TTS error:", e);
     if (placeholder) placeholder.textContent = clean;
   }
+}
+
+async function startRecordingWithRetry(maxAttempts = 3, delayMs = 450) {
+  if (!trainingActive) return false;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    if (!trainingActive) return false;
+    const ok = await startRecording();
+    if (ok) return true;
+    if (attempt < maxAttempts) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+  }
+  return false;
+}
+
+function stopScenarioSession(reason = "Тренировка остановлена.") {
+  trainingActive = false;
+  scenarioLaunchStarted = false;
+  initialClientTurnStarted = false;
+  autoRestart = false;
+  userStopped = true;
+  generationInFlight = false;
+  clearTrainerTimer();
+
+  if (previewTimer) {
+    clearInterval(previewTimer);
+    previewTimer = null;
+  }
+  if (recording) {
+    void stopRecording();
+  } else {
+    if (startBtn) startBtn.disabled = true;
+    if (stopBtn) stopBtn.disabled = true;
+  }
+
+  if (ttsAudio) {
+    try {
+      ttsAudio.pause();
+      ttsAudio.currentTime = 0;
+    } catch (_) {}
+  }
+  showAvatarImage();
+
+  if (startScenarioBtn) startScenarioBtn.disabled = false;
+  if (stopScenarioBtn) stopScenarioBtn.disabled = true;
+  if (statusEl) statusEl.textContent = reason;
+  renderTrainerTimer();
 }
 
 function showAvatarVideoWithAudio(videoUrl, audioUrl) {
@@ -428,6 +742,7 @@ async function requestLipSync(audioBlob) {
 async function resetChat() {
   const oldSession = chatSessionId;
   chatSessionId = null;
+  prevTelemetrySnapshot = null;
   scenarioRuntimeState = {
     trust_level: 50,
     mood: "calm",
@@ -448,7 +763,14 @@ async function resetChat() {
     used_objections: [],
     success_conditions_met: [],
     stop_conditions_met: [],
+    manager_quality: {
+      direct_answer_score: 0,
+      value_link_score: 0,
+      clarity_score: 0,
+      empathy_score: 0,
+    },
   };
+  updateTelemetryPanel(scenarioRuntimeState);
   if (chatEl) chatEl.innerHTML = "";
   dialogLog = [];
   if (analysisOutputEl) analysisOutputEl.textContent = "—";
@@ -475,13 +797,19 @@ async function resetChat() {
 
   statusEl.textContent = "Чат сброшен";
 
-  if (scenarioId && scenarioFirstSpeaker === "ai" && !initialClientTurnStarted) {
+  if (
+    scenarioId &&
+    scenarioLaunchStarted &&
+    scenarioFirstSpeaker === "ai" &&
+    !initialClientTurnStarted
+  ) {
     initialClientTurnStarted = true;
     await startInitialClientTurn();
   }
 }
 
 async function runDialogAnalysis() {
+  if (!analyzeBtn || !analysisOutputEl) return;
   if (!scenarioId) {
     statusEl.textContent = "Нужен scenario_id для анализа";
     return;
@@ -518,7 +846,7 @@ async function runDialogAnalysis() {
 }
 
 async function startRecording() {
-  if (recording) return;
+  if (recording) return true;
   userStopped = false;
 
   setLivePreview("—");
@@ -543,7 +871,7 @@ async function startRecording() {
       startBtn.disabled = false;
       stopBtn.disabled = true;
       appendChatMessage("assistant", "Ошибка микрофона: проверь доступ в браузере.");
-      return;
+      return false;
     }
   }
 
@@ -588,6 +916,7 @@ async function startRecording() {
 
     const input = event.inputBuffer.getChannelData(0);
     const rms = Math.sqrt(input.reduce((sum, v) => sum + v * v, 0) / input.length);
+    const peak = input.reduce((mx, v) => Math.max(mx, Math.abs(v)), 0);
     micRmsSmoothed = micRmsSmoothed * 0.85 + rms * 0.15;
     setMicLevel(micRmsSmoothed);
     const now = performance.now();
@@ -606,23 +935,26 @@ async function startRecording() {
       }
     }
 
-    const threshold = calibrated
-      ? Math.max(BASE_SILENCE_THRESHOLD, MIN_RMS_THRESHOLD, noiseFloor * 1.8)
-      : MIN_RMS_THRESHOLD;
-    const isVoice = rms >= threshold;
-
+    // Жесткое и простое правило:
+    // если входящий сигнал >= -20 dB, это речь; иначе тишина.
+    // Используем PEAK по буферу (а не RMS), чтобы не резать нормальную живую речь.
+    const isVoice = peak >= MIN_RMS_THRESHOLD;
     if (isVoice) {
       hasSpoken = true;
       silenceMs = 0;
       lastVoiceMs = now;
     }
 
-    // Автостоп по тишине применяем только после первого обнаружения речи.
-    if (hasSpoken && !isVoice) {
+    // 3 секунды непрерывной тишины (< -20 dB) => стоп и отправка.
+    // Не ждём отдельного флага hasSpoken, иначе при "тихом" микрофоне
+    // запись может никогда не завершиться.
+    if (!isVoice) {
       const bufferDurationMs = (input.length / audioContext.sampleRate) * 1000;
       silenceMs += bufferDurationMs;
-
-      if (now - lastVoiceMs >= SILENCE_LIMIT_MS) {
+      if (
+        silenceMs >= SILENCE_LIMIT_MS &&
+        now - recordingStartMs >= PREVIEW_MIN_AUDIO_MS
+      ) {
         stopRecording();
       }
     }
@@ -634,6 +966,7 @@ async function startRecording() {
 
   sourceNode.connect(processorNode);
   processorNode.connect(audioContext.destination);
+  return true;
 }
 
 async function stopRecording() {
@@ -675,6 +1008,11 @@ async function stopRecording() {
   }
 
   const wavBlob = encodeWav(audioChunks, sampleRate);
+  if (!trainingActive) {
+    statusEl.textContent = "Тренировка остановлена";
+    setMicLevel(0, "остановлено");
+    return;
+  }
   await sendAudio(wavBlob, { preview: false });
   setMicLevel(0, "ожидание");
 }
@@ -724,6 +1062,7 @@ function writeString(view, offset, str) {
 }
 
 async function sendAudio(blob, { preview } = { preview: false }) {
+  if (!trainingActive && !preview) return;
   if (!preview) {
     statusEl.textContent = "Отправка...";
   }
@@ -750,9 +1089,11 @@ async function sendAudio(blob, { preview } = { preview: false }) {
       throw new Error(data.error || "Ошибка распознавания");
     }
     if (preview) {
+      if (!trainingActive) return;
       setLivePreview(data.text || "(пусто)");
       statusEl.textContent = "Распознавание...";
     } else {
+      if (!trainingActive) return;
       if (generationInFlight) {
         statusEl.textContent = "Ожидание завершения предыдущей генерации...";
         return;
@@ -781,17 +1122,26 @@ async function sendAudio(blob, { preview } = { preview: false }) {
             }),
           });
           const chatData = await chatResp.json();
+          if (!trainingActive) {
+            if (placeholder) placeholder.textContent = "";
+            return;
+          }
           if (!chatResp.ok) {
             throw new Error(chatData.error || "Ошибка LLM");
           }
           if (chatData.runtime_state && typeof chatData.runtime_state === "object") {
             scenarioRuntimeState = chatData.runtime_state;
+            updateTelemetryPanel(scenarioRuntimeState);
           }
           chatSessionId = chatData.session_id;
           const replyText = chatData.reply || "(пусто)";
           // Не показываем текст сразу - передаём placeholder в playTts
-          statusEl.textContent = "Генерация видео...";
+          statusEl.textContent = "Озвучивание...";
           await playTts(replyText, placeholder);
+          if (chatData.stop === true) {
+            stopScenarioSession("Тренировка завершена: достигнуто условие стопа.");
+            return;
+          }
         } catch (e) {
           if (placeholder)
             placeholder.textContent = "Ошибка LLM: " + (e?.message || String(e));
@@ -803,10 +1153,12 @@ async function sendAudio(blob, { preview } = { preview: false }) {
       statusEl.textContent = "Готово";
 
       // Auto-restart recording after LLM response (hands-free mode)
-      if (autoRestart && !recording) {
+      if (trainingActive && autoRestart && !recording) {
         setTimeout(() => {
-          if (!recording) startRecording();
-        }, 400);
+          if (trainingActive && !recording) {
+            void startRecordingWithRetry(3, 400);
+          }
+        }, 300);
       }
     }
   } catch (error) {
@@ -867,6 +1219,8 @@ async function checkHealth() {
 
 if (scenarioId && statusEl) {
   statusEl.textContent = `Готово (сценарий: ${scenarioId})`;
+  if (startBtn) startBtn.disabled = true;
+  if (stopBtn) stopBtn.disabled = true;
 }
 
 async function loadScenarioBrief() {
@@ -879,30 +1233,108 @@ async function loadScenarioBrief() {
     if (!resp.ok) return;
     const data = await resp.json().catch(() => ({}));
     const item = data?.item || {};
-    const brief = String(item.context || "").trim();
     const title = String(item.title || "").trim();
+    scenarioDurationMinutes = Math.max(
+      5,
+      Math.min(30, Number(item.duration_minutes || 15))
+    );
+    scenarioShowTimer = Boolean(item?.ui_options?.show_timer);
+    resetTrainerTimerFromScenario();
     scenarioFirstSpeaker = String(item.first_speaker || "user").trim() === "ai" ? "ai" : "user";
+    const summary = String(item.context || "").trim();
+    const snapshot = item?.persona_selection?.selected_persona_snapshot || {};
+    const personaName = String(
+      item?.persona_selection?.selected_persona_snapshot?.name ||
+        item?.persona?.name ||
+        "Клиент"
+    ).trim();
+    const personaAgeRaw = Number(snapshot?.age || item?.persona?.age || 0);
+    const personaAge = Number.isFinite(personaAgeRaw) && personaAgeRaw > 0 ? personaAgeRaw : null;
+    const clientTypeRaw = String(snapshot?.client_type || "").trim();
+    const clientTypeMap = {
+      student: "студент",
+      working: "работающий",
+      retired: "пенсионер",
+      retired_working: "работающий пенсионер",
+    };
+    const clientTypeText = clientTypeMap[clientTypeRaw] || "статус не указан";
+    const amountText = formatMoney(item?.facts?.amount, item?.facts?.currency || "RUB");
+    const depositTermMonths = Number(item?.facts?.horizon_months || 0);
+    const depositTermText =
+      Number.isFinite(depositTermMonths) && depositTermMonths > 0
+        ? `${depositTermMonths} мес.`
+        : "не указан";
+    const avatarId = String(
+      item?.persona_selection?.selected_persona_snapshot?.avatar_id || ""
+    ).trim();
+    const launchAvatarSrc = resolveAvatarSrcById(avatarId);
+    const legendText = `Легенда: К вам обратился клиент для пролонгации вклада. Сумма вклада — ${amountText}, срок закончившегося депозита — ${depositTermText}.`;
+    const launchBriefLines = [
+      `Имя: ${personaName}.`,
+      `Возраст: ${personaAge ? `${personaAge}` : "не указан"}; статус: ${clientTypeText}.`,
+      legendText,
+    ].filter(Boolean);
 
     if (statusEl) {
       statusEl.textContent = title
         ? `Сценарий: ${title}`
         : `Сценарий: ${scenarioId}`;
     }
-    if (brief) {
-      appendChatMessage("assistant", `Информация перед тренировкой:\n${brief}`);
+    if (scenarioLaunchPanelEl) {
+      scenarioLaunchPanelEl.classList.remove("hidden");
     }
-
-    if (scenarioFirstSpeaker === "ai" && !initialClientTurnStarted) {
-      initialClientTurnStarted = true;
-      await startInitialClientTurn();
+    if (launchScenarioTitleEl) {
+      launchScenarioTitleEl.textContent = title || "Сценарий встречи";
+    }
+    if (launchScenarioSummaryEl) {
+      launchScenarioSummaryEl.textContent =
+        summary || "Описание задачи не заполнено. Используйте параметры сценария.";
+    }
+    if (launchScenarioBriefEl) {
+      launchScenarioBriefEl.textContent = launchBriefLines.join("\n");
+    }
+    if (avatarImg) {
+      avatarImg.src = launchAvatarSrc;
+      avatarImg.alt = personaName || "Аватар клиента";
     }
   } catch (_) {
     // ignore if scenario metadata is unavailable
   }
 }
 
+async function startScenarioSession() {
+  if (!scenarioId || scenarioLaunchStarted || generationInFlight) return;
+  scenarioLaunchStarted = true;
+  trainingActive = true;
+  if (startScenarioBtn) startScenarioBtn.disabled = true;
+  if (stopScenarioBtn) stopScenarioBtn.disabled = false;
+  if (startBtn) startBtn.disabled = false;
+  if (statusEl) statusEl.textContent = "Запуск сценария...";
+  autoRestart = true;
+  startTrainerTimer();
+  try {
+    await fetch(`/scenarios/${encodeURIComponent(scenarioId)}/prompt-pack`, {
+      method: "GET",
+      credentials: "same-origin",
+    });
+  } catch (_) {
+    // If preview endpoint is unavailable, continue: prompt-pack will still be built on /chat.
+  }
+
+  if (scenarioFirstSpeaker === "ai" && !initialClientTurnStarted) {
+    initialClientTurnStarted = true;
+    await startInitialClientTurn();
+  } else if (scenarioFirstSpeaker !== "ai") {
+    appendChatMessage(
+      "assistant",
+      "Сценарий запущен. Начинайте встречу первым сообщением менеджера."
+    );
+    if (statusEl) statusEl.textContent = "Сценарий запущен";
+  }
+}
+
 async function startInitialClientTurn() {
-  if (generationInFlight) return;
+  if (generationInFlight || !trainingActive) return;
   generationInFlight = true;
   appendChatMessage("assistant", null, true);
   const placeholder = chatEl?.lastElementChild?.querySelector?.(".chat-bubble");
@@ -921,26 +1353,48 @@ async function startInitialClientTurn() {
       }),
     });
     const chatData = await chatResp.json();
+    if (!trainingActive) {
+      if (placeholder) placeholder.textContent = "";
+      return;
+    }
     if (!chatResp.ok) {
       throw new Error(chatData.error || "Ошибка инициализации диалога");
     }
     if (chatData.runtime_state && typeof chatData.runtime_state === "object") {
       scenarioRuntimeState = chatData.runtime_state;
+      updateTelemetryPanel(scenarioRuntimeState);
     }
     chatSessionId = chatData.session_id;
     const replyText = chatData.reply || "(пусто)";
-    statusEl.textContent = "Генерация видео...";
+    statusEl.textContent = "Озвучивание...";
     await playTts(replyText, placeholder);
+    if (chatData.stop === true) {
+      stopScenarioSession("Тренировка завершена: достигнуто условие стопа.");
+      return;
+    }
     statusEl.textContent = "Готово";
+    if (trainingActive && autoRestart && !recording) {
+      setTimeout(() => {
+        if (trainingActive && !recording) {
+          void startRecordingWithRetry(3, 400);
+        }
+      }, 250);
+    }
   } catch (error) {
     if (placeholder) {
       placeholder.textContent = "Ошибка старта диалога: " + (error?.message || String(error));
     }
     statusEl.textContent = "Ошибка";
+    if (scenarioId && !chatSessionId) {
+      scenarioLaunchStarted = false;
+      initialClientTurnStarted = false;
+      if (startScenarioBtn) startScenarioBtn.disabled = false;
+    }
   } finally {
     generationInFlight = false;
   }
 }
 
 populateMicDevices();
+updateTelemetryPanel(scenarioRuntimeState);
 void loadScenarioBrief();

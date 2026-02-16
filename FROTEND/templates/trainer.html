@@ -7,80 +7,121 @@
     <link rel="stylesheet" href="/static/trainer.css?v=1" />
   </head>
   <body>
-    <div class="left-logo" aria-hidden="true">
-      <img src="/static/assets/logo/logo.svg" alt="" />
-    </div>
+    <aside class="trainer-stage" aria-label="Аватар клиента">
+      <div class="trainer-top-bar">
+        <button id="backToScenariosBtn" class="trainer-back-btn" type="button">← Назад</button>
+        <div id="trainerTimer" class="trainer-timer hidden" aria-live="polite">15:00</div>
+      </div>
+      <img id="avatarImage" class="trainer-stage-image" src="/avatar" alt="Аватар клиента" />
+      <video
+        id="avatarVideo"
+        class="trainer-stage-video"
+        style="display: none;"
+        autoplay
+        playsinline
+      ></video>
+      <section id="trainerTelemetry" class="trainer-telemetry" aria-live="polite">
+        <h3 class="trainer-telemetry-title">Состояние клиента</h3>
+        <div class="trainer-telemetry-row">
+          <span class="trainer-telemetry-label">Доверие</span>
+          <div class="trainer-telemetry-bar">
+            <span id="telemetryTrustFill" class="trainer-telemetry-fill"></span>
+          </div>
+          <span id="telemetryTrustValue" class="trainer-telemetry-value">50</span>
+          <span id="telemetryTrustDelta" class="trainer-telemetry-delta">—</span>
+        </div>
+        <div class="trainer-telemetry-row">
+          <span class="trainer-telemetry-label">Эмпатия</span>
+          <div class="trainer-telemetry-bar">
+            <span id="telemetryEmpathyFill" class="trainer-telemetry-fill"></span>
+          </div>
+          <span id="telemetryEmpathyValue" class="trainer-telemetry-value">0</span>
+          <span id="telemetryEmpathyDelta" class="trainer-telemetry-delta">—</span>
+        </div>
+        <div class="trainer-telemetry-row">
+          <span class="trainer-telemetry-label">Понятность</span>
+          <div class="trainer-telemetry-bar">
+            <span id="telemetryClarityFill" class="trainer-telemetry-fill"></span>
+          </div>
+          <span id="telemetryClarityValue" class="trainer-telemetry-value">0</span>
+          <span id="telemetryClarityDelta" class="trainer-telemetry-delta">—</span>
+        </div>
+        <div class="trainer-telemetry-row">
+          <span class="trainer-telemetry-label">Связь с целью</span>
+          <div class="trainer-telemetry-bar">
+            <span id="telemetryValueLinkFill" class="trainer-telemetry-fill"></span>
+          </div>
+          <span id="telemetryValueLinkValue" class="trainer-telemetry-value">0</span>
+          <span id="telemetryValueLinkDelta" class="trainer-telemetry-delta">—</span>
+        </div>
+        <div class="trainer-telemetry-flags">
+          <span id="telemetryPressureFlag" class="trainer-flag">Давление: нет</span>
+          <span id="telemetryEmotionFlag" class="trainer-flag">Эмо-триггер: нет</span>
+          <span id="telemetryModeFlag" class="trainer-flag">Режим: normal</span>
+        </div>
+      </section>
+    </aside>
     <main class="container">
       <h1>Речевой тренажер RGSL</h1>
-      <p class="hint">
-        Нажмите «Старт», говорите — текст будет появляться на лету. После
-        последнего слова подождите 3 секунды тишины, запись остановится
-        автоматически. Если тишина не определяется, нажмите «Стоп» вручную.
-      </p>
-
-      <div class="controls">
-        <button id="startBtn">Старт</button>
-        <button id="stopBtn" disabled>Стоп</button>
-        <button id="healthBtn">Проверить связь</button>
-        <select id="lipSyncMode" class="select">
-          <option value="talking">Новый (LivePortrait+Wav2Lip)</option>
-          <option value="legacy">Старый (LIPSYNC)</option>
-        </select>
-        <button id="resetChatBtn" class="secondary" type="button">
-          Сбросить чат
-        </button>
-        <button id="analyzeBtn" class="secondary" type="button">
-          Анализ встречи
-        </button>
-        <span id="status">Готово</span>
-      </div>
-      <div class="mic-panel" id="micPanel" aria-live="polite">
-        <span class="mic-label">Микрофон:</span>
-        <div class="mic-meter" aria-hidden="true">
-          <div id="micLevelBar" class="mic-meter-fill"></div>
-        </div>
-        <span id="micLevelText" class="mic-level-text">нет сигнала</span>
-      </div>
-      <div class="mic-device-row">
-        <label class="mic-device-label" for="micDeviceSelect">Вход:</label>
-        <select id="micDeviceSelect" class="select mic-device-select"></select>
-        <button id="refreshMicBtn" type="button" class="mic-refresh">Обновить</button>
-      </div>
-      <div class="version">UI v3</div>
-
-      <section class="result">
-        <h2>Аватар</h2>
-        <div class="avatar-wrap">
-          <img id="avatarImage" class="avatar-img" src="/avatar" alt="Аватар" />
-          <video
-            id="avatarVideo"
-            class="avatar-video"
-            style="display: none;"
-            autoplay
-            playsinline
-          ></video>
-        </div>
-        <div class="avatar-meta">
-          <span id="lipSyncStatus"></span>
+      <section id="scenarioLaunchPanel" class="scenario-launch-panel hidden">
+        <div class="scenario-launch-info-col">
+          <h2 id="launchScenarioTitle">Сценарий</h2>
+          <p id="launchScenarioSummary" class="scenario-launch-summary">—</p>
+          <div id="launchScenarioBrief" class="scenario-launch-brief">—</div>
+          <div class="scenario-launch-actions">
+            <button id="startScenarioBtn" type="button" class="scenario-launch-btn">
+              Запустить тренировку
+            </button>
+            <button id="stopScenarioBtn" type="button" class="scenario-stop-btn" disabled>
+              Остановка
+            </button>
+          </div>
         </div>
       </section>
+      <div id="trainerLegacyControls" class="hidden">
+        <p class="hint">
+          Нажмите «Старт», говорите — текст будет появляться на лету. После
+          последнего слова подождите 3 секунды тишины, запись остановится
+          автоматически. Если тишина не определяется, нажмите «Стоп» вручную.
+        </p>
 
-      <section class="result">
-        <h2>Чат</h2>
-        <div id="chat" class="chat"></div>
-      </section>
+        <div class="controls">
+          <button id="startBtn">Старт</button>
+          <button id="stopBtn" disabled>Стоп</button>
+          <button id="healthBtn">Проверить связь</button>
+          <select id="lipSyncMode" class="select">
+            <option value="talking">Новый (LivePortrait+Wav2Lip)</option>
+            <option value="legacy">Старый (LIPSYNC)</option>
+          </select>
+          <button id="resetChatBtn" class="secondary" type="button">
+            Сбросить чат
+          </button>
+          <span id="status">Готово</span>
+        </div>
+        <div class="mic-panel" id="micPanel" aria-live="polite">
+          <span class="mic-label">Микрофон:</span>
+          <div class="mic-meter" aria-hidden="true">
+            <div id="micLevelBar" class="mic-meter-fill"></div>
+          </div>
+          <span id="micLevelText" class="mic-level-text">нет сигнала</span>
+        </div>
+        <div class="mic-device-row">
+          <label class="mic-device-label" for="micDeviceSelect">Вход:</label>
+          <select id="micDeviceSelect" class="select mic-device-select"></select>
+          <button id="refreshMicBtn" type="button" class="mic-refresh">Обновить</button>
+        </div>
+        <div class="version">UI v3</div>
+      </div>
+      <div class="avatar-meta">
+        <span id="lipSyncStatus"></span>
+      </div>
 
-      <section class="result">
-        <h2>Транскрибация (на лету)</h2>
-        <pre id="livePreview">—</pre>
-      </section>
-
-      <section class="result">
-        <h2>Анализ встречи</h2>
-        <pre id="analysisOutput">—</pre>
+      <section class="result result-dialog">
+        <h2>Диалог</h2>
+        <div id="chat" class="chat chat-log"></div>
       </section>
     </main>
 
-    <script src="/static/app.js?v=32"></script>
+    <script src="/static/app.js?v=45"></script>
   </body>
 </html>

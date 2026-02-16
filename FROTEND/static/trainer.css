@@ -19,12 +19,14 @@ h2 {
 }
 
 .container {
-  max-width: 720px;
+  max-width: 1120px;
   margin: 40px auto;
   padding: 24px;
   background: #fff;
   border-radius: 12px;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+  display: flex;
+  flex-direction: column;
 }
 
 .controls {
@@ -144,6 +146,20 @@ button:disabled {
   border: 1px solid rgba(17, 24, 39, 0.06);
 }
 
+.result-dialog {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-bottom: 0;
+}
+
+.result-dialog .chat-log {
+  flex: 1 1 auto;
+  min-height: 320px;
+  max-height: none;
+}
+
 .chat-row {
   display: flex;
   margin: 8px 0;
@@ -255,6 +271,144 @@ button:disabled {
   color: #4b5563;
 }
 
+.scenario-launch-panel {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin: 14px 0 18px;
+  padding: 14px;
+  border-radius: 12px;
+  background: #eef2ff;
+  border: 1px solid rgba(37, 99, 235, 0.18);
+}
+
+.scenario-launch-info-col {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.scenario-launch-info-col h2 {
+  margin: 0;
+}
+
+.scenario-launch-summary {
+  margin: 0;
+  color: #334155;
+}
+
+.scenario-launch-brief {
+  white-space: pre-wrap;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 10px;
+  padding: 10px 12px;
+  min-height: 96px;
+  color: #111827;
+}
+
+.scenario-launch-btn {
+  width: fit-content;
+}
+
+.scenario-launch-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.scenario-stop-btn {
+  background: #b91c1c;
+}
+
+.scenario-stop-btn:disabled {
+  background: #9ca3af;
+}
+
+.scenario-launch-note {
+  margin: 0;
+  font-size: 12px;
+  color: #475569;
+}
+
+.trainer-stage {
+  display: none;
+}
+
+.trainer-top-bar {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  right: 14px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  pointer-events: none;
+}
+
+.trainer-back-btn {
+  position: static;
+  z-index: 7;
+  border: 0;
+  background: transparent;
+  color: #ffffff;
+  font-size: 24px;
+  line-height: 1;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
+}
+
+.trainer-back-btn:hover {
+  background: rgba(15, 23, 42, 0.28);
+}
+
+.trainer-timer {
+  pointer-events: auto;
+  color: #fff;
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 1;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+}
+
+.trainer-timer.is-warning {
+  background: rgba(180, 83, 9, 0.68);
+  border-color: rgba(253, 230, 138, 0.58);
+  color: #fff7ed;
+}
+
+.trainer-timer.is-critical {
+  background: rgba(185, 28, 28, 0.72);
+  border-color: rgba(254, 202, 202, 0.68);
+  color: #fff1f2;
+  animation: trainerTimerPulse 0.85s ease-in-out infinite;
+}
+
+@keyframes trainerTimerPulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(248, 113, 113, 0.42);
+  }
+  50% {
+    transform: scale(1.04);
+    box-shadow: 0 0 0 8px rgba(248, 113, 113, 0);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(248, 113, 113, 0);
+  }
+}
+
 /* Спиннер загрузки */
 .spinner {
   display: inline-block;
@@ -279,12 +433,7 @@ button:disabled {
 @media (min-width: 1200px) {
   body {
     min-height: 100vh;
-    background-image:
-      linear-gradient(to right, transparent 0 50%, #ffffff 50% 100%),
-      url("/static/assets/backgrounds/background.jpg");
-    background-size: 100% 100%, cover;
-    background-position: center center, center center;
-    background-repeat: no-repeat, no-repeat;
+    background: #f5f5f5;
   }
 
   .container {
@@ -294,10 +443,137 @@ button:disabled {
     border-radius: 0;
     box-shadow: none;
     background: #fff;
+    min-height: calc(100vh - 64px);
   }
 
-  .left-logo {
+  .trainer-stage {
     display: block;
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 50vw;
+    height: 100vh;
+    overflow: hidden;
+    background: #0b1020;
+  }
+
+  .trainer-stage-image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    z-index: 1;
+  }
+
+.trainer-stage-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #0b1020;
+  z-index: 2;
+}
+
+.trainer-telemetry {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 14px;
+  z-index: 6;
+  padding: 12px 12px 10px;
+  border-radius: 12px;
+  background: rgba(7, 13, 28, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(4px);
+  color: #e5e7eb;
+}
+
+.trainer-telemetry-title {
+  margin: 0 0 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+.trainer-telemetry-row {
+  display: grid;
+  grid-template-columns: 96px 1fr 32px 34px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.trainer-telemetry-label {
+  font-size: 12px;
+  color: #cbd5e1;
+}
+
+.trainer-telemetry-bar {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.28);
+  overflow: hidden;
+}
+
+.trainer-telemetry-fill {
+  display: block;
+  width: 0%;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #38bdf8 0%, #2563eb 100%);
+  transition: width 220ms ease;
+}
+
+.trainer-telemetry-value {
+  font-size: 11px;
+  text-align: right;
+  color: #f8fafc;
+}
+
+.trainer-telemetry-delta {
+  font-size: 11px;
+  text-align: right;
+  color: #94a3b8;
+}
+
+.trainer-telemetry-delta.up {
+  color: #22c55e;
+}
+
+.trainer-telemetry-delta.down {
+  color: #f97316;
+}
+
+.trainer-telemetry-flags {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.trainer-flag {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: rgba(15, 23, 42, 0.42);
+  color: #cbd5e1;
+}
+
+.trainer-flag.alert {
+  border-color: rgba(248, 113, 113, 0.68);
+  color: #fecaca;
+  background: rgba(127, 29, 29, 0.45);
+}
+
+  .left-logo {
+    display: none;
     position: fixed;
     top: 24px;
     left: 25vw;
@@ -311,5 +587,15 @@ button:disabled {
     width: min(360px, 42vw);
     max-height: 96px;
     object-fit: contain;
+  }
+}
+
+@media (max-width: 960px) {
+  .scenario-launch-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .trainer-telemetry {
+    display: none;
   }
 }

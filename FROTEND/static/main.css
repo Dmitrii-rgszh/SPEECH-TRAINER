@@ -136,6 +136,16 @@ h2,
   gap: 16px;
 }
 
+.workspace-header.workspace-header--personas {
+  justify-content: flex-start;
+  gap: 18px;
+}
+
+.workspace-header.workspace-header--scenarios {
+  justify-content: flex-start;
+  gap: 18px;
+}
+
 .workspace-new-btn {
   height: 40px;
   padding: 0 14px;
@@ -1735,6 +1745,14 @@ body.app-mode-workspace .workspace-title {
   font-weight: 700;
 }
 
+.wizard-persona-avatar-image {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+  display: block;
+}
+
 .wizard-persona-content {
   display: grid;
   gap: 6px;
@@ -1892,6 +1910,12 @@ body.app-mode-workspace .workspace-title {
 .wizard-btn.is-success {
   background: rgba(22, 163, 74, 0.78);
   border-color: rgba(134, 239, 172, 0.9);
+}
+
+.wizard-btn.is-danger {
+  background: rgba(185, 28, 28, 0.65);
+  border-color: rgba(252, 165, 165, 0.85);
+  color: #fee2e2;
 }
 
 .wizard-btn:disabled {

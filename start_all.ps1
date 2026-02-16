@@ -19,14 +19,29 @@ function Test-Ollama([string]$url) {
 }
 
 function Test-OpenAICompat([string]$url) {
+  $isLegacyPs = $PSVersionTable.PSVersion.Major -lt 6
   try {
     $base = $url.TrimEnd("/")
-    $resp = Invoke-WebRequest -Uri ("$base/v1/models") -Method Get -TimeoutSec 2 -ErrorAction Stop
+    $params = @{
+      Uri = ("$base/v1/models")
+      Method = "Get"
+      TimeoutSec = 2
+      ErrorAction = "Stop"
+    }
+    if ($isLegacyPs) { $params["UseBasicParsing"] = $true }
+    $resp = Invoke-WebRequest @params
     return ($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 500)
   } catch {
     try {
       $base = $url.TrimEnd("/")
-      $resp = Invoke-WebRequest -Uri ("$base/models") -Method Get -TimeoutSec 2 -ErrorAction Stop
+      $params = @{
+        Uri = ("$base/models")
+        Method = "Get"
+        TimeoutSec = 2
+        ErrorAction = "Stop"
+      }
+      if ($isLegacyPs) { $params["UseBasicParsing"] = $true }
+      $resp = Invoke-WebRequest @params
       return ($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 500)
     } catch {
       return $false

@@ -130,6 +130,65 @@ export function RightPanel() {
     }
   };
 
+  const buildPersonaRequestBody = (payload) => ({
+    persona: {
+      name: payload.name,
+      description: payload.description || '',
+      age: Number(payload.age || 0),
+      client_type: payload.clientType || '',
+      avatar_gender: payload.avatarGender || 'male',
+      avatar_id: payload.avatarId || 'male_senior_1',
+      greeting: payload.greeting || '',
+      behavior: payload.behavior || '',
+      behavior_mode: payload.behaviorMode || 'free',
+      behavior_struct: {
+        communication_style: payload.behaviorStruct?.communicationStyle || '',
+        decision_speed: payload.behaviorStruct?.decisionSpeed || '',
+        openness: payload.behaviorStruct?.openness || '',
+        pressure_reaction: payload.behaviorStruct?.pressureReaction || '',
+        objection_level: payload.behaviorStruct?.objectionLevel || '',
+        answer_length: payload.behaviorStruct?.answerLength || '',
+        empathy_effect: payload.behaviorStruct?.empathyEffect || '',
+        extra: payload.behaviorStruct?.extra || '',
+      },
+      behavior_struct_confidence: {
+        communication_style: Number(payload.behaviorStructConfidence?.communicationStyle || 0),
+        decision_speed: Number(payload.behaviorStructConfidence?.decisionSpeed || 0),
+        openness: Number(payload.behaviorStructConfidence?.openness || 0),
+        pressure_reaction: Number(payload.behaviorStructConfidence?.pressureReaction || 0),
+        objection_level: Number(payload.behaviorStructConfidence?.objectionLevel || 0),
+        answer_length: Number(payload.behaviorStructConfidence?.answerLength || 0),
+        empathy_effect: Number(payload.behaviorStructConfidence?.empathyEffect || 0),
+      },
+    },
+  });
+
+  const savePersonaFinal = async (payload, personaId = '') => {
+    if (personaId) {
+      await api(`/personas/${encodeURIComponent(personaId)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          ...buildPersonaRequestBody(payload),
+          auto_publish: true,
+        }),
+      });
+      return personaId;
+    }
+
+    const created = await api('/personas', {
+      method: 'POST',
+      body: JSON.stringify({
+        ...buildPersonaRequestBody(payload),
+        auto_publish: true,
+      }),
+    });
+    const createdId = String(created?.item?.id || '');
+    if (!createdId) {
+      throw new Error('Не удалось определить ID созданной персоны.');
+    }
+    return createdId;
+  };
+
   const buildPersonaCards = () => {
     const cards = personasStore.map((persona) => ({
       ...persona,
@@ -526,6 +585,7 @@ export function RightPanel() {
     header.append(title);
 
     if (titleText === 'Сценарии') {
+      header.classList.add('workspace-header--scenarios');
       const newScenarioButton = document.createElement('button');
       newScenarioButton.className = 'workspace-new-btn';
       newScenarioButton.type = 'button';
@@ -540,6 +600,7 @@ export function RightPanel() {
       });
     } else if (titleText === 'Персоны') {
       card.classList.add('workspace-page--personas');
+      header.classList.add('workspace-header--personas');
       const createPersonaButton = document.createElement('button');
       createPersonaButton.className = 'workspace-new-btn';
       createPersonaButton.type = 'button';
@@ -548,41 +609,7 @@ export function RightPanel() {
         openPersonaWizard({
           mode: 'create',
           onSave: async (payload) => {
-            await api('/personas', {
-              method: 'POST',
-              body: JSON.stringify({
-                persona: {
-                  name: payload.name,
-                  description: payload.description || '',
-                  age: Number(payload.age || 0),
-                  client_type: payload.clientType || '',
-                  avatar_gender: payload.avatarGender || 'male',
-                  avatar_id: payload.avatarId || 'male_senior_1',
-                  greeting: payload.greeting || '',
-                  behavior: payload.behavior || '',
-                  behavior_mode: payload.behaviorMode || 'free',
-                  behavior_struct: {
-                    communication_style: payload.behaviorStruct?.communicationStyle || '',
-                    decision_speed: payload.behaviorStruct?.decisionSpeed || '',
-                    openness: payload.behaviorStruct?.openness || '',
-                    pressure_reaction: payload.behaviorStruct?.pressureReaction || '',
-                    objection_level: payload.behaviorStruct?.objectionLevel || '',
-                    answer_length: payload.behaviorStruct?.answerLength || '',
-                    empathy_effect: payload.behaviorStruct?.empathyEffect || '',
-                    extra: payload.behaviorStruct?.extra || '',
-                  },
-                  behavior_struct_confidence: {
-                    communication_style: Number(payload.behaviorStructConfidence?.communicationStyle || 0),
-                    decision_speed: Number(payload.behaviorStructConfidence?.decisionSpeed || 0),
-                    openness: Number(payload.behaviorStructConfidence?.openness || 0),
-                    pressure_reaction: Number(payload.behaviorStructConfidence?.pressureReaction || 0),
-                    objection_level: Number(payload.behaviorStructConfidence?.objectionLevel || 0),
-                    answer_length: Number(payload.behaviorStructConfidence?.answerLength || 0),
-                    empathy_effect: Number(payload.behaviorStructConfidence?.empathyEffect || 0),
-                  },
-                },
-              }),
-            });
+            await savePersonaFinal(payload, '');
             await loadPersonasFromApi();
             renderWorkspaceView('Персоны', currentLogin);
           },
@@ -622,7 +649,7 @@ export function RightPanel() {
 
         const nameEl = document.createElement('h3');
         nameEl.className = 'persona-card-name';
-        nameEl.textContent = `${persona.name} — ${persona.subtitle}`;
+        nameEl.textContent = String(persona.name || 'Новая персона');
         titleGroup.append(nameEl);
 
         const actions = document.createElement('div');
@@ -656,7 +683,7 @@ export function RightPanel() {
         editBtn.type = 'button';
         editBtn.textContent = '✎';
         editBtn.title = persona._isDraft ? 'Продолжить черновик' : 'Редактировать';
-        editBtn.addEventListener('click', () => {
+        const openPersonaEditor = () => {
           const slotData = persona._isDraft ? readPersonaDraftStore()[persona._draftSlot] : null;
           const draftData = slotData?.data || {};
           openPersonaWizard({
@@ -699,82 +726,20 @@ export function RightPanel() {
             },
             onSave: async (payload) => {
               if (persona._isDraft) {
-                await api('/personas', {
-                  method: 'POST',
-                  body: JSON.stringify({
-                    persona: {
-                      name: payload.name,
-                      description: payload.description || '',
-                      age: Number(payload.age || 0),
-                      client_type: payload.clientType || '',
-                      avatar_gender: payload.avatarGender || 'male',
-                      avatar_id: payload.avatarId || 'male_senior_1',
-                      greeting: payload.greeting || '',
-                      behavior: payload.behavior || '',
-                      behavior_mode: payload.behaviorMode || 'free',
-                      behavior_struct: {
-                        communication_style: payload.behaviorStruct?.communicationStyle || '',
-                        decision_speed: payload.behaviorStruct?.decisionSpeed || '',
-                        openness: payload.behaviorStruct?.openness || '',
-                        pressure_reaction: payload.behaviorStruct?.pressureReaction || '',
-                        objection_level: payload.behaviorStruct?.objectionLevel || '',
-                        answer_length: payload.behaviorStruct?.answerLength || '',
-                        empathy_effect: payload.behaviorStruct?.empathyEffect || '',
-                        extra: payload.behaviorStruct?.extra || '',
-                      },
-                      behavior_struct_confidence: {
-                        communication_style: Number(payload.behaviorStructConfidence?.communicationStyle || 0),
-                        decision_speed: Number(payload.behaviorStructConfidence?.decisionSpeed || 0),
-                        openness: Number(payload.behaviorStructConfidence?.openness || 0),
-                        pressure_reaction: Number(payload.behaviorStructConfidence?.pressureReaction || 0),
-                        objection_level: Number(payload.behaviorStructConfidence?.objectionLevel || 0),
-                        answer_length: Number(payload.behaviorStructConfidence?.answerLength || 0),
-                        empathy_effect: Number(payload.behaviorStructConfidence?.empathyEffect || 0),
-                      },
-                    },
-                  }),
-                });
+                await savePersonaFinal(payload, '');
               } else {
-                await api(`/personas/${encodeURIComponent(persona.id)}`, {
-                  method: 'PATCH',
-                  body: JSON.stringify({
-                    persona: {
-                      name: payload.name,
-                      description: payload.description || '',
-                      age: Number(payload.age || 0),
-                      client_type: payload.clientType || '',
-                      avatar_gender: payload.avatarGender || 'male',
-                      avatar_id: payload.avatarId || 'male_senior_1',
-                      greeting: payload.greeting || '',
-                      behavior: payload.behavior || '',
-                      behavior_mode: payload.behaviorMode || 'free',
-                      behavior_struct: {
-                        communication_style: payload.behaviorStruct?.communicationStyle || '',
-                        decision_speed: payload.behaviorStruct?.decisionSpeed || '',
-                        openness: payload.behaviorStruct?.openness || '',
-                        pressure_reaction: payload.behaviorStruct?.pressureReaction || '',
-                        objection_level: payload.behaviorStruct?.objectionLevel || '',
-                        answer_length: payload.behaviorStruct?.answerLength || '',
-                        empathy_effect: payload.behaviorStruct?.empathyEffect || '',
-                        extra: payload.behaviorStruct?.extra || '',
-                      },
-                      behavior_struct_confidence: {
-                        communication_style: Number(payload.behaviorStructConfidence?.communicationStyle || 0),
-                        decision_speed: Number(payload.behaviorStructConfidence?.decisionSpeed || 0),
-                        openness: Number(payload.behaviorStructConfidence?.openness || 0),
-                        pressure_reaction: Number(payload.behaviorStructConfidence?.pressureReaction || 0),
-                        objection_level: Number(payload.behaviorStructConfidence?.objectionLevel || 0),
-                        answer_length: Number(payload.behaviorStructConfidence?.answerLength || 0),
-                        empathy_effect: Number(payload.behaviorStructConfidence?.empathyEffect || 0),
-                      },
-                    },
-                  }),
-                });
+                await savePersonaFinal(payload, persona.id);
               }
               await loadPersonasFromApi();
               renderWorkspaceView('Персоны', currentLogin);
             },
           });
+        };
+        editBtn.addEventListener('click', openPersonaEditor);
+        cardEl.addEventListener('click', (event) => {
+          const target = event.target;
+          if (target && target.closest && target.closest('.persona-mini-btn')) return;
+          openPersonaEditor();
         });
 
         let publishBtn = null;
@@ -980,7 +945,7 @@ export function RightPanel() {
       });
 
     const closeWizard = async (force = false) => {
-      if (!force) {
+      if (!force && dirty) {
         const action = await askCloseAction();
         if (action === 'continue') return;
         if (action === 'yes') {
@@ -1039,6 +1004,29 @@ export function RightPanel() {
     saveDraftBtn.type = 'button';
     saveDraftBtn.textContent = 'Сохранить';
 
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'wizard-btn is-danger';
+    deleteBtn.type = 'button';
+    deleteBtn.textContent = 'Удалить';
+    deleteBtn.addEventListener('click', async () => {
+      const confirmed = window.confirm('Удалить персону? Действие нельзя отменить.');
+      if (!confirmed) return;
+      try {
+        if (personaId) {
+          await api(`/personas/${encodeURIComponent(personaId)}`, { method: 'DELETE' });
+        } else {
+          const nextStore = readPersonaDraftStore();
+          delete nextStore[draftSlot];
+          writePersonaDraftStore(nextStore);
+        }
+        dirty = false;
+        closeWizard(true);
+      } catch (error) {
+        errors.className = 'scenario-step-errors';
+        errors.textContent = error?.message || 'Не удалось удалить персону.';
+      }
+    });
+
     const nextBtn = document.createElement('button');
     nextBtn.className = 'wizard-btn is-primary';
     nextBtn.type = 'button';
@@ -1079,17 +1067,37 @@ export function RightPanel() {
       }
     });
 
-    saveDraftBtn.addEventListener('click', () => {
-      persistDraft();
-      errors.className = 'scenario-step-errors';
-      errors.textContent = 'Черновик сохранен.';
+    saveDraftBtn.addEventListener('click', async () => {
+      try {
+        if (mode === 'edit' && personaId) {
+          await api(`/personas/${encodeURIComponent(personaId)}`, {
+            method: 'PATCH',
+            body: JSON.stringify(buildPersonaRequestBody(draft)),
+          });
+          await loadPersonasFromApi();
+          errors.className = 'scenario-step-errors';
+          errors.textContent = 'Изменения сохранены в БД.';
+          dirty = false;
+        } else {
+          persistDraft();
+          errors.className = 'scenario-step-errors';
+          errors.textContent = 'Черновик сохранен.';
+        }
+      } catch (error) {
+        errors.className = 'scenario-step-errors';
+        errors.textContent = error?.message || 'Не удалось сохранить изменения.';
+      }
       window.setTimeout(() => {
         errors.className = 'scenario-step-errors is-empty';
         errors.textContent = '';
       }, 1800);
     });
 
-    footer.append(backBtn, saveDraftBtn, nextBtn);
+    footer.append(backBtn, saveDraftBtn);
+    if (mode === 'edit' || personaId || savedDraft) {
+      footer.append(deleteBtn);
+    }
+    footer.append(nextBtn);
 
     const validateStep = (stepIdx) => {
       if (stepIdx === 0) {

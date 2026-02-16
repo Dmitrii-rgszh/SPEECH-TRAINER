@@ -144,6 +144,21 @@ def prune_sessions(now_ts: float) -> None:
         chat_sessions.pop(sid, None)
 
 
+def trim_history(history: list[dict[str, str]]) -> list[dict[str, str]]:
+    max_msgs = int(LLM["max_messages"])
+    if max_msgs <= 0:
+        return history
+    if history and history[0].get("role") == "system":
+        system_msg = history[0:1]
+        tail = history[1:]
+        if len(tail) > max_msgs:
+            tail = tail[-max_msgs:]
+        return system_msg + tail
+    if len(history) > max_msgs:
+        return history[-max_msgs:]
+    return history
+
+
 def strip_non_russian(text: str) -> str:
     cleaned_chars: list[str] = []
     for ch in text:
@@ -324,6 +339,9 @@ def chat():
         return jsonify({"error": "text is required"}), 400
 
     reset = bool(data.get("reset", False))
+    shadow = bool(data.get("shadow", False))
+    commit_only = bool(data.get("commit_only", False))
+    commit_reply = (data.get("commit_reply") or "").strip()
     session_id = (data.get("session_id") or "").strip() or uuid.uuid4().hex
     effective_system_prompt = request_system_prompt(data)
 
@@ -335,23 +353,33 @@ def chat():
                 "last_active": time.time(),
             }
         session = chat_sessions[session_id]
-        history = session.get("history") or []
-        history = ensure_system_prompt(history, effective_system_prompt)  # type: ignore[arg-type]
-        history.append({"role": "user", "content": text})
-        # keep system message at the beginning; allow large history, trim only if over max_messages
-        max_msgs = int(LLM["max_messages"])
-        if max_msgs > 0:
-            if history and history[0].get("role") == "system":
-                system_msg = history[0:1]
-                tail = history[1:]
-                if len(tail) > max_msgs:
-                    tail = tail[-max_msgs:]
-                history = system_msg + tail
-            else:
-                if len(history) > max_msgs:
-                    history = history[-max_msgs:]
+        base_history = session.get("history") or []
+        base_history = ensure_system_prompt(base_history, effective_system_prompt)  # type: ignore[arg-type]
 
-        session["history"] = history
+        if commit_only:
+            if not commit_reply:
+                return jsonify({"error": "commit_reply is required", "session_id": session_id}), 400
+            committed = list(base_history)
+            committed.append({"role": "user", "content": text})
+            committed.append({"role": "assistant", "content": commit_reply})
+            committed = trim_history(committed)
+            session["history"] = committed
+            session["last_active"] = time.time()
+            chat_sessions[session_id] = session
+            return jsonify(
+                {
+                    "reply": commit_reply,
+                    "session_id": session_id,
+                    "committed": True,
+                }
+            )
+
+        history = list(base_history)
+        history.append({"role": "user", "content": text})
+        history = trim_history(history)
+
+        if not shadow:
+            session["history"] = history
         session["last_active"] = time.time()
         chat_sessions[session_id] = session
 
@@ -386,31 +414,21 @@ def chat():
     reply_text = fix_russian_awkwardness(reply_text)
     reply_text = drop_trailing_fragment(reply_text)
 
-    with chat_lock:
-        session = chat_sessions.get(session_id) or {
-            "history": ensure_system_prompt([], effective_system_prompt),
-            "last_active": time.time(),
-        }
-        history = session.get("history") or []
-        history = ensure_system_prompt(history, effective_system_prompt)  # type: ignore[arg-type]
-        history.append({"role": "assistant", "content": reply_text})
-        max_msgs = int(LLM["max_messages"])
-        if max_msgs > 0:
-            if history and history[0].get("role") == "system":
-                system_msg = history[0:1]
-                tail = history[1:]
-                if len(tail) > max_msgs:
-                    tail = tail[-max_msgs:]
-                history = system_msg + tail
-            else:
-                if len(history) > max_msgs:
-                    history = history[-max_msgs:]
+    if not shadow:
+        with chat_lock:
+            session = chat_sessions.get(session_id) or {
+                "history": ensure_system_prompt([], effective_system_prompt),
+                "last_active": time.time(),
+            }
+            history = session.get("history") or []
+            history = ensure_system_prompt(history, effective_system_prompt)  # type: ignore[arg-type]
+            history.append({"role": "assistant", "content": reply_text})
+            history = trim_history(history)
+            session["history"] = history
+            session["last_active"] = time.time()
+            chat_sessions[session_id] = session
 
-        session["history"] = history
-        session["last_active"] = time.time()
-        chat_sessions[session_id] = session
-
-    return jsonify({"reply": reply_text, "session_id": session_id})
+    return jsonify({"reply": reply_text, "session_id": session_id, "shadow": shadow})
 
 
 if __name__ == "__main__":

@@ -8,6 +8,36 @@ const STEP_TITLES = [
 ];
 
 const TAG_OPTIONS = ["Вклады", "Премиум", "Инвест", "Обучение"];
+const GOAL_OPTIONS = [
+  { value: "preserve", label: "Сохранить" },
+  { value: "accumulate", label: "Накопить" },
+  { value: "yield", label: "Доходность" },
+  { value: "liquidity", label: "Ликвидность" },
+  { value: "target_term", label: "К сроку (через N месяцев)" },
+];
+const GOAL_VALUES = new Set(GOAL_OPTIONS.map((item) => item.value));
+const GOAL_LABEL_BY_VALUE = GOAL_OPTIONS.reduce((acc, item) => {
+  acc[item.value] = item.label;
+  return acc;
+}, {});
+const PRESERVE_FROM_OPTIONS = [
+  { value: "inflation", label: "От инфляции" },
+  { value: "impulse_spending", label: "От импульсивных трат" },
+  { value: "devaluation", label: "От девальвации" },
+  { value: "job_loss", label: "Подушка на случай потери работы" },
+  { value: "other", label: "Другое" },
+];
+const PRESERVE_FROM_VALUES = new Set(PRESERVE_FROM_OPTIONS.map((item) => item.value));
+const DEFLECTION_TRIGGER_OPTIONS = [
+  { value: "no_discovery", label: "Продажа без выявления потребности" },
+  { value: "no_value_link", label: "Нет связи с личной целью клиента" },
+  { value: "ignore_questions", label: "Игнорирование вопросов клиента" },
+  { value: "early_offer", label: "Ранний переход к оформлению" },
+  { value: "script_monologue", label: "Монолог по скрипту без диалога" },
+];
+const DEFLECTION_TRIGGER_VALUES = new Set(
+  DEFLECTION_TRIGGER_OPTIONS.map((item) => item.value)
+);
 const RED_LINE_PRESETS = [
   "Не люблю давление",
   "Не хочу сложных терминов",
@@ -39,6 +69,22 @@ const ANALYSIS_FORMATS = [
   { id: "short_recommendations", label: "Короткий итог + 3 рекомендации" },
 ];
 const PERSONA_LIBRARY_MOCK = [];
+const PERSONA_AVATARS_MOCK = [
+  {
+    id: "male_senior_1",
+    label: "Мужчина 1",
+    thumbSrc: "/static/assets/avatars/male_senior_close.png",
+    previewSrc: "/static/assets/avatars/male_senior_full.png",
+    gender: "male",
+  },
+  {
+    id: "female_1",
+    label: "Женщина 1",
+    thumbSrc: "/static/assets/avatars/female_1_close.png",
+    previewSrc: "/static/assets/avatars/female_1_full.png",
+    gender: "female",
+  },
+];
 
 const PERSONA_PRESETS = {
   influencer: {
@@ -72,6 +118,9 @@ const DEFAULT_SCENARIO = {
   context: "",
   first_speaker: "user",
   duration_minutes: 15,
+  ui_options: {
+    show_timer: false,
+  },
   model: "qwen2.5:7b-instruct",
   knowledge_refs: {
     product_pack_id: "",
@@ -117,11 +166,20 @@ const DEFAULT_SCENARIO = {
   facts: {
     reason: "deposit_matured",
     reason_custom: "",
-    goal: "preserve",
-    goal_custom: "",
+    goals: ["preserve"],
+    primary_goal: "preserve",
+    preserve_from: ["inflation"],
+    preserve_from_other: "",
+    accumulate_purpose: "",
+    accumulate_target_amount: null,
+    accumulate_horizon_months: 12,
+    target_term_months: 12,
     meeting_life_goal: "",
     horizon_months: 12,
     liquidity: "medium",
+    deflection_mode: "off",
+    deflection_triggers: [],
+    deflection_false_objection_example: "",
     amount: 300000,
     currency: "RUB",
     had_deposit_before: true,
@@ -137,12 +195,10 @@ const DEFAULT_SCENARIO = {
   dialog_rules: {
     no_internet: true,
     ask_if_unknown: true,
-    answer_length: "medium",
     max_questions: 2,
+    behavior_shift: "neutral",
     mood_rules: {
       start_mood: "neutral",
-      escalate_on_pressure: true,
-      soften_on_empathy: true,
     },
   },
   objections: {
@@ -221,7 +277,7 @@ const DEFAULT_SCENARIO = {
       { name: "Понятность объяснения", weight: 4, enabled: true },
       { name: "Следующий шаг", weight: 3, enabled: true },
       { name: "Эмпатия", weight: 3, enabled: false },
-      { name: "Структура звонка и Next Step", weight: 3, enabled: false },
+      { name: "Структура встречи и Next Step", weight: 3, enabled: false },
     ],
     format: "scores_comments",
     language: "RU",
@@ -244,6 +300,54 @@ const formatDateTime = (value) => {
   const dt = new Date(value.replace(" ", "T") + "Z");
   if (Number.isNaN(dt.getTime())) return value;
   return dt.toLocaleString("ru-RU");
+};
+
+const normalizeGoalValue = (value) => {
+  const cleaned = String(value || "").trim();
+  if (cleaned === "target_date") return "target_term";
+  return cleaned;
+};
+
+const resolveScenarioGoals = (facts) => {
+  const source = Array.isArray(facts?.goals) ? facts.goals : [];
+  const resolved = [];
+  source.forEach((item) => {
+    const normalized = normalizeGoalValue(item);
+    if (!GOAL_VALUES.has(normalized) || resolved.includes(normalized)) return;
+    resolved.push(normalized);
+  });
+  const legacy = normalizeGoalValue(facts?.primary_goal || facts?.goal);
+  if (GOAL_VALUES.has(legacy) && !resolved.includes(legacy)) resolved.push(legacy);
+  if (!resolved.length) resolved.push("preserve");
+  return resolved.slice(0, 3);
+};
+
+const resolvePrimaryGoal = (facts, goals) => {
+  const normalized = normalizeGoalValue(facts?.primary_goal || facts?.goal);
+  if (goals.includes(normalized)) return normalized;
+  return goals[0] || "preserve";
+};
+
+const resolvePreserveFrom = (facts) => {
+  const source = Array.isArray(facts?.preserve_from) ? facts.preserve_from : [];
+  const resolved = [];
+  source.forEach((item) => {
+    const normalized = String(item || "").trim();
+    if (!PRESERVE_FROM_VALUES.has(normalized) || resolved.includes(normalized)) return;
+    resolved.push(normalized);
+  });
+  return resolved;
+};
+
+const resolveDeflectionTriggers = (facts) => {
+  const source = Array.isArray(facts?.deflection_triggers) ? facts.deflection_triggers : [];
+  const resolved = [];
+  source.forEach((item) => {
+    const normalized = String(item || "").trim();
+    if (!DEFLECTION_TRIGGER_VALUES.has(normalized) || resolved.includes(normalized)) return;
+    resolved.push(normalized);
+  });
+  return resolved;
 };
 
 async function api(path, options = {}) {
@@ -396,19 +500,59 @@ export function mountScenariosWorkspace({ mount, newScenarioButton }) {
 
     if (step === 2) {
       if (!data.facts?.reason) errors.push("Выберите причину обращения.");
-      if (!data.facts?.goal) errors.push("Выберите цель клиента.");
+      const selectedGoals = resolveScenarioGoals(data.facts || {});
+      const primaryGoal = resolvePrimaryGoal(data.facts || {}, selectedGoals);
+      if (selectedGoals.length < 1) errors.push("Выберите хотя бы одну цель клиента.");
+      if (selectedGoals.length > 3) errors.push("Можно выбрать не более 3 целей клиента.");
+      if (!selectedGoals.includes(primaryGoal)) errors.push("Главная цель должна входить в выбранные цели.");
       if (String(data.facts?.reason || "") === "custom" && String(data.facts?.reason_custom || "").trim().length < 3) {
         errors.push("Заполните свою причину обращения (минимум 3 символа).");
       }
-      if (String(data.facts?.goal || "") === "custom" && String(data.facts?.goal_custom || "").trim().length < 3) {
-        errors.push("Заполните свою цель клиента (минимум 3 символа).");
+      if (selectedGoals.includes("preserve")) {
+        const preserveFrom = resolvePreserveFrom(data.facts || {});
+        if (!preserveFrom.length) {
+          errors.push("Для цели «Сохранить» укажите, от чего сохраняем деньги.");
+        }
+        if (preserveFrom.includes("other") && String(data.facts?.preserve_from_other || "").trim().length < 3) {
+          errors.push("Заполните поле «Другое» для цели «Сохранить».");
+        }
+      }
+      if (selectedGoals.includes("accumulate")) {
+        if (String(data.facts?.accumulate_purpose || "").trim().length < 3) {
+          errors.push("Для цели «Накопить» укажите, на что клиент копит.");
+        }
+        if (!Number(data.facts?.accumulate_target_amount) || Number(data.facts?.accumulate_target_amount) < 10000) {
+          errors.push("Для цели «Накопить» сумма должна быть не меньше 10 000.");
+        }
+        const accumulateMonths = Number(data.facts?.accumulate_horizon_months || 0);
+        if (accumulateMonths < 1 || accumulateMonths > 120) {
+          errors.push("Для цели «Накопить» срок должен быть в диапазоне 1..120 месяцев.");
+        }
+      }
+      if (selectedGoals.includes("target_term")) {
+        const targetMonths = Number(data.facts?.target_term_months || 0);
+        if (targetMonths < 1 || targetMonths > 120) {
+          errors.push("Для цели «К сроку» укажите срок 1..120 месяцев.");
+        }
       }
       const lifeGoal = String(data.facts?.meeting_life_goal || "").trim();
       if (lifeGoal.length < 8 || lifeGoal.length > 300) {
         errors.push("Жизненная цель клиента должна быть от 8 до 300 символов.");
       }
-      if (!Number(data.facts?.horizon_months)) errors.push("Укажите горизонт в месяцах.");
+      if (!Number(data.facts?.horizon_months)) errors.push("Укажите срок закончившегося депозита в месяцах.");
       if (!data.facts?.liquidity) errors.push("Укажите потребность в ликвидности.");
+      const deflectionMode = String(data.facts?.deflection_mode || "off");
+      const deflectionTriggers = resolveDeflectionTriggers(data.facts || {});
+      const behaviorShift = String(data.dialog_rules?.behavior_shift || "neutral");
+      if (!["off", "soft", "active"].includes(deflectionMode)) {
+        errors.push("Некорректный режим ложных возражений.");
+      }
+      if (!["softer", "neutral", "harder"].includes(behaviorShift)) {
+        errors.push("Некорректный модификатор тона сценария.");
+      }
+      if (deflectionMode !== "off" && deflectionTriggers.length < 1) {
+        errors.push("Для режима ложных возражений выберите хотя бы один триггер.");
+      }
       if (!Number(data.facts?.amount) || Number(data.facts?.amount) < 10000) {
         errors.push("Сумма должна быть не меньше 10 000.");
       }
@@ -762,14 +906,12 @@ export function mountScenariosWorkspace({ mount, newScenarioButton }) {
               <header class="scenario-item-head">
                 <h3>${esc(item.title || "Без названия")}</h3>
                 <div class="scenario-head-meta">
-                  <span class="scenario-ver">v${Number(item.version || 1)}</span>
                   <span class="scenario-status-inline ${
                     item.status === "active" ? "is-active" : "is-draft"
                   }">${esc(item.status || "draft")}</span>
                 </div>
               </header>
               <div class="scenario-item-grid">
-                <div><strong>Модель:</strong> ${esc(item.model || "—")}</div>
                 <div><strong>Длительность:</strong> ${Number(item.duration_minutes || 0)} мин</div>
                 <div><strong>Теги:</strong> ${(Array.isArray(item.tags) ? item.tags : []).map(esc).join(", ") || "—"}</div>
                 <div><strong>Обновлён:</strong> ${esc(formatDateTime(item.updated_at))}</div>
@@ -1193,6 +1335,26 @@ function renderStep1(container, state, updateScenario) {
     "Определяет старт тренировки: первым приветствует либо ИИ-клиент, либо менеджер."
   );
 
+  const timerToggleWrap = document.createElement("label");
+  timerToggleWrap.className = "wizard-check";
+  const timerToggleInput = document.createElement("input");
+  timerToggleInput.type = "checkbox";
+  timerToggleInput.checked = Boolean(data.ui_options?.show_timer);
+  timerToggleInput.addEventListener("change", () => {
+    updateScenario((draft) => {
+      draft.ui_options = draft.ui_options || {};
+      draft.ui_options.show_timer = timerToggleInput.checked;
+    });
+  });
+  const timerToggleText = document.createElement("span");
+  timerToggleText.textContent = "Показывать таймер во время тренировки";
+  timerToggleWrap.append(timerToggleInput, timerToggleText);
+  const timerField = createField(
+    "Таймер тренировки",
+    timerToggleWrap,
+    "Если включено, в тренажере слева сверху показывается обратный отсчет от выбранной длительности."
+  );
+
   const tagsWrap = document.createElement("div");
   tagsWrap.className = "wizard-tags";
   TAG_OPTIONS.forEach((tag) => {
@@ -1223,7 +1385,7 @@ function renderStep1(container, state, updateScenario) {
     "Теги помогают группировать сценарии по направлениям."
   );
 
-  card.append(titleField, contextField, row, firstSpeakerField, tagsField);
+  card.append(titleField, contextField, row, firstSpeakerField, timerField, tagsField);
   container.innerHTML = "";
   container.append(card);
 }
@@ -1232,6 +1394,10 @@ function renderStep2(container, state, updateScenario) {
   const data = state.wizard.data;
   const refs = data.knowledge_refs || {};
   const facts = data.facts || {};
+  const selectedGoals = resolveScenarioGoals(facts);
+  const primaryGoal = resolvePrimaryGoal(facts, selectedGoals);
+  const preserveFrom = resolvePreserveFrom(facts);
+  const deflectionTriggers = resolveDeflectionTriggers(facts);
   const redLines = Array.isArray(data.red_lines) ? data.red_lines : [];
   const rules = data.dialog_rules || {};
   const mood = rules.mood_rules || {};
@@ -1317,24 +1483,59 @@ function renderStep2(container, state, updateScenario) {
   );
   contextRowTop.append(reasonField);
 
-  const goalSelect = createSelect(
-    [
-      { value: "preserve", label: "Сохранить" },
-      { value: "accumulate", label: "Накопить" },
-      { value: "yield", label: "Доходность" },
-      { value: "liquidity", label: "Ликвидность" },
-      { value: "target_date", label: "К определённому сроку" },
-      { value: "custom", label: "Своя опция" },
-    ],
-    facts.goal || "preserve"
-  );
-  goalSelect.addEventListener("change", () => {
-    updateScenario((draft) => {
-      draft.facts.goal = goalSelect.value;
+  const goalsWrap = document.createElement("div");
+  goalsWrap.className = "wizard-check-grid";
+  GOAL_OPTIONS.forEach((goalOption) => {
+    const checkboxId = uid("goal");
+    const label = document.createElement("label");
+    label.className = "wizard-check";
+    label.setAttribute("for", checkboxId);
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.id = checkboxId;
+    checkbox.checked = selectedGoals.includes(goalOption.value);
+    checkbox.addEventListener("change", () => {
+      if (checkbox.checked && !selectedGoals.includes(goalOption.value) && selectedGoals.length >= 3) {
+        checkbox.checked = false;
+        window.alert("Можно выбрать не более 3 целей.");
+        return;
+      }
+      updateScenario((draft) => {
+        draft.facts = draft.facts || {};
+        const current = resolveScenarioGoals(draft.facts);
+        let next = checkbox.checked
+          ? [...current, goalOption.value]
+          : current.filter((item) => item !== goalOption.value);
+        next = [...new Set(next)].filter((item) => GOAL_VALUES.has(item)).slice(0, 3);
+        if (!next.length) next = ["preserve"];
+        const currentPrimary = resolvePrimaryGoal(draft.facts, next);
+        draft.facts.goals = next;
+        draft.facts.primary_goal = currentPrimary;
+        if (!Number(draft.facts.horizon_months)) draft.facts.horizon_months = 12;
+        if (!Number(draft.facts.accumulate_horizon_months)) {
+          draft.facts.accumulate_horizon_months = Number(draft.facts.horizon_months || 12);
+        }
+        if (!Number(draft.facts.target_term_months)) {
+          draft.facts.target_term_months = Number(draft.facts.horizon_months || 12);
+        }
+        if (currentPrimary === "accumulate") {
+          draft.facts.horizon_months = Number(draft.facts.accumulate_horizon_months || 12);
+        } else if (currentPrimary === "target_term") {
+          draft.facts.horizon_months = Number(draft.facts.target_term_months || 12);
+        }
+      });
     });
+    const text = document.createElement("span");
+    text.textContent = goalOption.label;
+    label.append(checkbox, text);
+    goalsWrap.append(label);
   });
   contextRowTop.append(
-    createField("Цель клиента", goalSelect, "Определяет фокус вопросов и согласия клиента.")
+    createField(
+      "Цели клиента (можно несколько)",
+      goalsWrap,
+      "Выберите до 3 целей и назначьте главную цель ниже."
+    )
   );
 
   const contextRowCustom = document.createElement("div");
@@ -1351,42 +1552,69 @@ function renderStep2(container, state, updateScenario) {
       draft.facts.reason_custom = reasonCustom.value;
     });
   });
-  contextRowCustom.append(
-    createField("Своя причина", reasonCustom, "Заполняется, если выбран пункт «Своя опция».")
+  if (reasonSelect.value === "custom") {
+    contextRowCustom.append(
+      createField("Своя причина", reasonCustom, "Заполняется, если выбран пункт «Своя опция».")
+    );
+  }
+  const primaryGoalSelect = createSelect(
+    selectedGoals.map((goal) => ({ value: goal, label: GOAL_LABEL_BY_VALUE[goal] || goal })),
+    primaryGoal
   );
-  const goalCustom = createInput({
-    type: "text",
-    value: facts.goal_custom || "",
-    maxLength: 200,
-    placeholder: "Своя цель клиента",
-  });
-  goalCustom.disabled = goalSelect.value !== "custom";
-  goalCustom.addEventListener("input", () => {
+  primaryGoalSelect.addEventListener("change", () => {
     updateScenario((draft) => {
-      draft.facts.goal_custom = goalCustom.value;
+      draft.facts = draft.facts || {};
+      const goals = resolveScenarioGoals(draft.facts);
+      const nextPrimary = goals.includes(primaryGoalSelect.value) ? primaryGoalSelect.value : goals[0];
+      draft.facts.primary_goal = nextPrimary;
+      if (nextPrimary === "accumulate" && Number(draft.facts.accumulate_horizon_months || 0) > 0) {
+        draft.facts.horizon_months = Number(draft.facts.accumulate_horizon_months || 12);
+      } else if (nextPrimary === "target_term" && Number(draft.facts.target_term_months || 0) > 0) {
+        draft.facts.horizon_months = Number(draft.facts.target_term_months || 12);
+      }
     });
   });
   contextRowCustom.append(
-    createField("Своя цель", goalCustom, "Заполняется, если выбран пункт «Своя опция».")
+    createField("Главная цель", primaryGoalSelect, "Главная цель определяет приоритет в согласии клиента.")
   );
 
   const contextRowBottom = document.createElement("div");
   contextRowBottom.className = "wizard-row wizard-row-2";
 
-  const horizonInput = createInput({
-    type: "number",
-    value: facts.horizon_months ?? 12,
-    min: 1,
-    max: 60,
-  });
-  horizonInput.addEventListener("input", () => {
-    updateScenario((draft) => {
-      draft.facts.horizon_months = Number(horizonInput.value || 12);
+  if (!["accumulate", "target_term"].includes(primaryGoal)) {
+    const horizonInput = createInput({
+      type: "number",
+      value: facts.horizon_months ?? 12,
+      min: 1,
+      max: 120,
     });
-  });
-  contextRowBottom.append(
-    createField("Горизонт (мес)", horizonInput, "Срок цели клиента: от 1 до 60 месяцев.")
-  );
+    horizonInput.addEventListener("input", () => {
+      updateScenario((draft) => {
+        draft.facts.horizon_months = Number(horizonInput.value || 12);
+      });
+    });
+    contextRowBottom.append(
+      createField(
+        "Срок закончившегося депозита (мес)",
+        horizonInput,
+        "Срок, на который ранее был открыт депозит: от 1 до 120 месяцев."
+      )
+    );
+  } else {
+    const horizonDerived = document.createElement("div");
+    horizonDerived.className = "wizard-help";
+    const derivedMonths =
+      primaryGoal === "accumulate"
+        ? Number(facts.accumulate_horizon_months || facts.horizon_months || 12)
+        : Number(facts.target_term_months || facts.horizon_months || 12);
+    horizonDerived.textContent = `Срок закончившегося депозита автоматически берется из главной цели: ${derivedMonths} мес.`;
+    const horizonDerivedField = createField(
+      "Срок закончившегося депозита (мес)",
+      horizonDerived,
+      "Чтобы избежать дублирования, срок задается в параметрах главной цели."
+    );
+    contextRowBottom.append(horizonDerivedField);
+  }
 
   const liquiditySelect = createSelect(
     [
@@ -1409,11 +1637,147 @@ function renderStep2(container, state, updateScenario) {
     )
   );
 
+  const goalsDetails = document.createElement("div");
+  goalsDetails.className = "wizard-row wizard-row-1";
+  if (selectedGoals.includes("preserve")) {
+    const preserveWrap = document.createElement("div");
+    preserveWrap.className = "wizard-check-grid";
+    PRESERVE_FROM_OPTIONS.forEach((option) => {
+      const preserveId = uid("preserve");
+      const label = document.createElement("label");
+      label.className = "wizard-check";
+      label.setAttribute("for", preserveId);
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.id = preserveId;
+      checkbox.checked = preserveFrom.includes(option.value);
+      checkbox.addEventListener("change", () => {
+        updateScenario((draft) => {
+          draft.facts = draft.facts || {};
+          const current = resolvePreserveFrom(draft.facts);
+          draft.facts.preserve_from = checkbox.checked
+            ? [...new Set([...current, option.value])]
+            : current.filter((item) => item !== option.value);
+        });
+      });
+      const text = document.createElement("span");
+      text.textContent = option.label;
+      label.append(checkbox, text);
+      preserveWrap.append(label);
+    });
+    goalsDetails.append(
+      createField(
+        "Если цель «Сохранить», то от чего",
+        preserveWrap,
+        "Уточнение помогает клиенту формулировать реалистичные критерии."
+      )
+    );
+    if (preserveFrom.includes("other")) {
+      const preserveOtherInput = createInput({
+        type: "text",
+        value: facts.preserve_from_other || "",
+        maxLength: 120,
+        placeholder: "Уточните, от чего нужно сохранить",
+      });
+      preserveOtherInput.addEventListener("input", () => {
+        updateScenario((draft) => {
+          draft.facts.preserve_from_other = preserveOtherInput.value;
+        });
+      });
+      goalsDetails.append(
+        createField("Другое (для «Сохранить»)", preserveOtherInput, "Заполните, если выбрано «Другое».")
+      );
+    }
+  }
+
+  if (selectedGoals.includes("accumulate")) {
+    const accumulateRowTop = document.createElement("div");
+    accumulateRowTop.className = "wizard-row wizard-row-2";
+    const accumulatePurposeInput = createInput({
+      type: "text",
+      value: facts.accumulate_purpose || "",
+      maxLength: 160,
+      placeholder: "Например: первый взнос по ипотеке / покупка автомобиля",
+    });
+    accumulatePurposeInput.addEventListener("input", () => {
+      updateScenario((draft) => {
+        draft.facts.accumulate_purpose = accumulatePurposeInput.value;
+      });
+    });
+    accumulateRowTop.append(
+      createField("Если цель «Накопить», то на что", accumulatePurposeInput, "Конкретная цель накопления.")
+    );
+    const accumulateAmountInput = createInput({
+      type: "number",
+      value: facts.accumulate_target_amount ?? "",
+      min: 10000,
+      placeholder: "Например: 1500000",
+    });
+    accumulateAmountInput.addEventListener("input", () => {
+      updateScenario((draft) => {
+        const raw = String(accumulateAmountInput.value || "").trim();
+        draft.facts.accumulate_target_amount = raw ? Number(raw) : null;
+      });
+    });
+    accumulateRowTop.append(
+      createField("Нужная сумма для накопления", accumulateAmountInput, "Минимум 10 000.")
+    );
+    goalsDetails.append(accumulateRowTop);
+
+    const accumulateHorizonInput = createInput({
+      type: "number",
+      value: facts.accumulate_horizon_months ?? 12,
+      min: 1,
+      max: 120,
+    });
+    accumulateHorizonInput.addEventListener("input", () => {
+      updateScenario((draft) => {
+        const nextValue = Number(accumulateHorizonInput.value || 12);
+        draft.facts.accumulate_horizon_months = nextValue;
+        if (String(draft.facts.primary_goal || "") === "accumulate") {
+          draft.facts.horizon_months = nextValue;
+        }
+      });
+    });
+    goalsDetails.append(
+      createField(
+        "Через сколько месяцев нужны накопления",
+        accumulateHorizonInput,
+        "Указывается срок в месяцах, не конкретная дата."
+      )
+    );
+  }
+
+  if (selectedGoals.includes("target_term")) {
+    const targetTermInput = createInput({
+      type: "number",
+      value: facts.target_term_months ?? 12,
+      min: 1,
+      max: 120,
+    });
+    targetTermInput.addEventListener("input", () => {
+      updateScenario((draft) => {
+        const nextValue = Number(targetTermInput.value || 12);
+        draft.facts.target_term_months = nextValue;
+        if (String(draft.facts.primary_goal || "") === "target_term") {
+          draft.facts.horizon_months = nextValue;
+        }
+      });
+    });
+    goalsDetails.append(
+      createField(
+        "Если цель «К сроку», через сколько месяцев понадобятся деньги",
+        targetTermInput,
+        "Только срок в месяцах."
+      )
+    );
+  }
+
   const lifeGoalArea = createTextArea({
     value: facts.meeting_life_goal || "",
     rows: 3,
     maxLength: 300,
-    placeholder: "Например: накопить на первый взнос по ипотеке в течение 2 лет.",
+    placeholder: "Например: накопить на первый взнос по ипотеке, чтобы через 18 месяцев начать сделку.",
   });
   lifeGoalArea.addEventListener("input", () => {
     updateScenario((draft) => {
@@ -1426,8 +1790,92 @@ function renderStep2(container, state, updateScenario) {
     "Ключевая личная цель, которая делает мотивацию клиента реалистичной."
   );
   lifeGoalField.append(addCounter(lifeGoalArea, 300));
+  const deflectionRowTop = document.createElement("div");
+  deflectionRowTop.className = "wizard-row wizard-row-2";
+  const deflectionModeSelect = createSelect(
+    [
+      { value: "off", label: "Не использовать ложные возражения" },
+      { value: "soft", label: "Иногда уходит в защитные причины" },
+      { value: "active", label: "Часто уходит в защитные причины" },
+    ],
+    String(facts.deflection_mode || "off")
+  );
+  deflectionModeSelect.addEventListener("change", () => {
+    updateScenario((draft) => {
+      draft.facts.deflection_mode = deflectionModeSelect.value;
+      if (deflectionModeSelect.value === "off") {
+        draft.facts.deflection_triggers = [];
+      }
+    });
+  });
+  deflectionRowTop.append(
+    createField(
+      "Ложные возражения (защитная реакция)",
+      deflectionModeSelect,
+      "Нужно для реалистичной реакции, когда презентация не зацепила клиента."
+    )
+  );
+  const deflectionExampleInput = createInput({
+    type: "text",
+    value: facts.deflection_false_objection_example || "",
+    maxLength: 200,
+    placeholder: "Например: «Мне деньги скоро нужны на квартиру»",
+  });
+  deflectionExampleInput.addEventListener("input", () => {
+    updateScenario((draft) => {
+      draft.facts.deflection_false_objection_example = deflectionExampleInput.value;
+    });
+  });
+  deflectionRowTop.append(
+    createField("Пример формального (ложного) повода", deflectionExampleInput, "Опционально.")
+  );
 
-  contextCard.append(contextRowTop, contextRowCustom, contextRowBottom, lifeGoalField);
+  const deflectionTriggersField = document.createElement("div");
+  deflectionTriggersField.className = "wizard-row wizard-row-1";
+  if (String(facts.deflection_mode || "off") !== "off") {
+    const triggerWrap = document.createElement("div");
+    triggerWrap.className = "wizard-check-grid";
+    DEFLECTION_TRIGGER_OPTIONS.forEach((option) => {
+      const triggerId = uid("deflect");
+      const label = document.createElement("label");
+      label.className = "wizard-check";
+      label.setAttribute("for", triggerId);
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.id = triggerId;
+      checkbox.checked = deflectionTriggers.includes(option.value);
+      checkbox.addEventListener("change", () => {
+        updateScenario((draft) => {
+          draft.facts = draft.facts || {};
+          const current = resolveDeflectionTriggers(draft.facts);
+          draft.facts.deflection_triggers = checkbox.checked
+            ? [...new Set([...current, option.value])]
+            : current.filter((item) => item !== option.value);
+        });
+      });
+      const text = document.createElement("span");
+      text.textContent = option.label;
+      label.append(checkbox, text);
+      triggerWrap.append(label);
+    });
+    deflectionTriggersField.append(
+      createField(
+        "Триггеры защитных причин",
+        triggerWrap,
+        "Это ошибки ведения диалога (не личные красные линии клиента)."
+      )
+    );
+  }
+
+  contextCard.append(
+    contextRowTop,
+    ...(contextRowCustom.children.length ? [contextRowCustom] : []),
+    contextRowBottom,
+    goalsDetails,
+    lifeGoalField,
+    deflectionRowTop,
+    deflectionTriggersField
+  );
   container.append(contextCard);
 
   const amountCard = createCard("Сумма и опыт");
@@ -1634,23 +2082,7 @@ function renderStep2(container, state, updateScenario) {
   rulesCard.append(createField("Контроль галлюцинаций", noFactsWrap, "Клиент запрашивает уточнение у менеджера."));
 
   const row = document.createElement("div");
-  row.className = "wizard-row wizard-row-2";
-  const lenSelect = createSelect(
-    [
-      { value: "short", label: "Коротко (1-2 предложения)" },
-      { value: "medium", label: "Средне (2-4 предложения)" },
-      { value: "long", label: "Развернуто (до 6 предложений)" },
-    ],
-    rules.answer_length || "medium"
-  );
-  lenSelect.addEventListener("change", () => {
-    updateScenario((draft) => {
-      draft.dialog_rules.answer_length = lenSelect.value;
-    });
-  });
-  row.append(
-    createField("Длина ответа", lenSelect, "Ограничение помогает удерживать темп диалога.")
-  );
+  row.className = "wizard-row wizard-row-1";
 
   const qSelect = createSelect(
     [
@@ -1669,7 +2101,7 @@ function renderStep2(container, state, updateScenario) {
     createField(
       "Количество вопросов в реплике",
       qSelect,
-      "Ограничение сверху: не более 2 вопросов."
+      "Ограничение сверху: не более 2 вопросов. Базовая длина ответа берется из выбранной персоны."
     )
   );
   rulesCard.append(row);
@@ -1677,7 +2109,7 @@ function renderStep2(container, state, updateScenario) {
 
   const moodCard = createCard("Динамика настроения");
   const moodRowTop = document.createElement("div");
-  moodRowTop.className = "wizard-row wizard-row-1";
+  moodRowTop.className = "wizard-row wizard-row-2";
   const moodSelect = createSelect(
     [
       { value: "neutral", label: "Нейтральное" },
@@ -1693,39 +2125,29 @@ function renderStep2(container, state, updateScenario) {
     });
   });
   moodRowTop.append(
-    createField("Стартовое настроение", moodSelect, "Начальное состояние клиента в начале звонка.")
+    createField("Стартовое настроение", moodSelect, "Начальное состояние клиента в начале встречи.")
+  );
+  const shiftSelect = createSelect(
+    [
+      { value: "softer", label: "Мягче базовой персоны" },
+      { value: "neutral", label: "Без смещения (как в персоне)" },
+      { value: "harder", label: "Жестче базовой персоны" },
+    ],
+    rules.behavior_shift || "neutral"
+  );
+  shiftSelect.addEventListener("change", () => {
+    updateScenario((draft) => {
+      draft.dialog_rules.behavior_shift = shiftSelect.value;
+    });
+  });
+  moodRowTop.append(
+    createField(
+      "Модификатор тона сценария",
+      shiftSelect,
+      "Смещение применяется поверх базового характера выбранной персоны."
+    )
   );
   moodCard.append(moodRowTop);
-
-  const flags = document.createElement("div");
-  flags.className = "wizard-check-grid";
-  const escalateLabel = document.createElement("label");
-  escalateLabel.className = "wizard-check";
-  const escalateInput = document.createElement("input");
-  escalateInput.type = "checkbox";
-  escalateInput.checked = Boolean(mood.escalate_on_pressure ?? true);
-  escalateInput.addEventListener("change", () => {
-    updateScenario((draft) => {
-      draft.dialog_rules.mood_rules.escalate_on_pressure = escalateInput.checked;
-    });
-  });
-  escalateLabel.append(escalateInput, document.createTextNode("Усиливать раздражение при давлении"));
-  flags.append(escalateLabel);
-
-  const softenLabel = document.createElement("label");
-  softenLabel.className = "wizard-check";
-  const softenInput = document.createElement("input");
-  softenInput.type = "checkbox";
-  softenInput.checked = Boolean(mood.soften_on_empathy ?? true);
-  softenInput.addEventListener("change", () => {
-    updateScenario((draft) => {
-      draft.dialog_rules.mood_rules.soften_on_empathy = softenInput.checked;
-    });
-  });
-  softenLabel.append(softenInput, document.createTextNode("Смягчаться при эмпатии"));
-  flags.append(softenLabel);
-
-  moodCard.append(createField("Поведенческие флаги", flags, "Регулируют эскалацию в ходе диалога."));
   container.append(moodCard);
 }
 
@@ -1742,46 +2164,6 @@ function renderStep3(container, state, updateScenario) {
     ? state.personas
     : PERSONA_LIBRARY_MOCK;
   const selectedPersona = personas.find((item) => String(item.id) === String(selectedId));
-  const snapshotComparable = [
-    String(snapshot.name || "").trim(),
-    String(snapshot.description || "").trim(),
-    String(snapshot.age ?? "").trim(),
-    String(snapshot.client_type || "").trim(),
-    String(snapshot.greeting || "").trim(),
-    String(snapshot.behavior || "").trim(),
-    String(snapshot.behavior_mode || "").trim(),
-    String(snapshot.behavior_struct?.communication_style || "").trim(),
-    String(snapshot.behavior_struct?.decision_speed || "").trim(),
-    String(snapshot.behavior_struct?.openness || "").trim(),
-    String(snapshot.behavior_struct?.pressure_reaction || "").trim(),
-    String(snapshot.behavior_struct?.objection_level || "").trim(),
-    String(snapshot.behavior_struct?.answer_length || "").trim(),
-    String(snapshot.behavior_struct?.empathy_effect || "").trim(),
-    String(snapshot.behavior_struct?.extra || "").trim(),
-    String(snapshot.avatar_id || "").trim(),
-  ].join("||");
-  const selectedComparable = selectedPersona
-    ? [
-        String(selectedPersona.name || "").trim(),
-        String(selectedPersona.description || "").trim(),
-        String(selectedPersona.age ?? "").trim(),
-        String(selectedPersona.client_type || "").trim(),
-        String(selectedPersona.greeting || "").trim(),
-        String(selectedPersona.behavior || "").trim(),
-        String(selectedPersona.behavior_mode || "").trim(),
-        String(selectedPersona.behavior_struct?.communication_style || "").trim(),
-        String(selectedPersona.behavior_struct?.decision_speed || "").trim(),
-        String(selectedPersona.behavior_struct?.openness || "").trim(),
-        String(selectedPersona.behavior_struct?.pressure_reaction || "").trim(),
-        String(selectedPersona.behavior_struct?.objection_level || "").trim(),
-        String(selectedPersona.behavior_struct?.answer_length || "").trim(),
-        String(selectedPersona.behavior_struct?.empathy_effect || "").trim(),
-        String(selectedPersona.behavior_struct?.extra || "").trim(),
-        String(selectedPersona.avatar_id || selectedPersona.avatarId || "").trim(),
-      ].join("||")
-    : "";
-  const hasSnapshot = Boolean(String(snapshot.name || "").trim() || String(snapshot.behavior || "").trim());
-  const snapshotOutdated = Boolean(selectedPersona && hasSnapshot && snapshotComparable !== selectedComparable);
   container.innerHTML = "";
 
   const personaCard = createCard("Выбор персоны");
@@ -1814,8 +2196,13 @@ function renderStep3(container, state, updateScenario) {
       retired_working: "Пенсионер + работающий",
     };
     const clientType = clientTypeMap[String(item.client_type || "")] || "Не указан";
+    const avatarId = String(item.avatar_id || item.avatarId || "").trim();
+    const avatarMeta = PERSONA_AVATARS_MOCK.find((avatar) => avatar.id === avatarId);
+    const avatarMarkup = avatarMeta?.thumbSrc
+      ? `<img class="wizard-persona-avatar-image" src="${esc(avatarMeta.thumbSrc)}" alt="${esc(item.name || "Аватар")}" />`
+      : esc(initials);
     card.innerHTML = `
-      <span class="wizard-persona-avatar">${esc(initials)}</span>
+      <span class="wizard-persona-avatar">${avatarMarkup}</span>
       <span class="wizard-persona-content">
         <span class="wizard-persona-name">${esc(title)}</span>
         <span class="wizard-persona-meta"><b>Возраст/тип:</b> ${esc(age ? String(age) : "—")} / ${esc(clientType)}</span>
@@ -1823,6 +2210,14 @@ function renderStep3(container, state, updateScenario) {
         <span class="wizard-persona-meta"><b>Поведение:</b> ${esc(behavior || "Пока не заполнено")}</span>
       </span>
     `;
+    if (avatarMeta?.thumbSrc) {
+      const avatarImg = card.querySelector(".wizard-persona-avatar-image");
+      avatarImg?.addEventListener("error", () => {
+        const holder = card.querySelector(".wizard-persona-avatar");
+        if (!holder) return;
+        holder.textContent = initials;
+      });
+    }
     card.addEventListener("click", () => {
       updateScenario((draft) => {
         draft.persona_selection = draft.persona_selection || {};
@@ -1867,94 +2262,6 @@ function renderStep3(container, state, updateScenario) {
     list.append(card);
   });
   personaCard.append(list);
-
-  const snapshotInfo = document.createElement("div");
-  snapshotInfo.className = "wizard-persona-snapshot";
-  const snapshotStatus = String(snapshot.persona_status || "не задан");
-  const snapshotVersion = Number(snapshot.persona_version || 0);
-  const snapshotUpdatedAt = String(snapshot.persona_updated_at || "");
-  const snapshotUpdatedText = snapshotUpdatedAt ? formatDateTime(snapshotUpdatedAt) : "—";
-  const snapshotClientTypeMap = {
-    student: "Студент",
-    working: "Работающий",
-    retired: "Пенсионер",
-    retired_working: "Пенсионер + работающий",
-  };
-  const snapshotClientType = snapshotClientTypeMap[String(snapshot.client_type || "")] || "Не указан";
-  const snapshotBehaviorModeMap = {
-    free: "Свободный ввод",
-    structured: "Выбор параметров",
-  };
-  const snapshotBehaviorMode =
-    snapshotBehaviorModeMap[String(snapshot.behavior_mode || "free")] || "Свободный ввод";
-  snapshotInfo.innerHTML = `
-    <p class="wizard-persona-note">
-      Сценарий хранит <b>snapshot</b> персоны (копию параметров на момент выбора).
-      Изменения персоны в разделе «Персоны» не применяются автоматически к уже сохраненному сценарию.
-    </p>
-    <p class="wizard-persona-note">
-      Текущий snapshot: статус <b>${esc(snapshotStatus)}</b>, версия <b>${esc(String(snapshotVersion || 0))}</b>, обновлен: <b>${esc(snapshotUpdatedText)}</b>.
-    </p>
-    <p class="wizard-persona-note">
-      Профиль snapshot: возраст <b>${esc(snapshot.age ? String(snapshot.age) : "—")}</b>, тип клиента <b>${esc(snapshotClientType)}</b>.
-    </p>
-    <p class="wizard-persona-note">
-      Режим поведения snapshot: <b>${esc(snapshotBehaviorMode)}</b>.
-    </p>
-  `;
-  if (snapshotOutdated && selectedPersona) {
-    const outdated = document.createElement("p");
-    outdated.className = "wizard-persona-note is-warning";
-    outdated.textContent =
-      "В библиотеке есть более новая версия персоны. Обновите snapshot, если хотите применить изменения к этому сценарию.";
-    const refreshBtn = document.createElement("button");
-    refreshBtn.type = "button";
-    refreshBtn.className = "wizard-inline-btn";
-    refreshBtn.textContent = "Обновить snapshot из персоны";
-    refreshBtn.addEventListener("click", () => {
-      updateScenario((draft) => {
-        draft.persona_selection = draft.persona_selection || {};
-        draft.persona_selection.selected_persona_id = selectedPersona.id;
-        draft.persona_selection.selected_persona_snapshot = {
-          name: String(selectedPersona.name || ""),
-          description: String(selectedPersona.description || ""),
-          age: selectedPersona.age ?? null,
-          client_type: String(selectedPersona.client_type || ""),
-          greeting: String(selectedPersona.greeting || ""),
-          behavior: String(selectedPersona.behavior || ""),
-          behavior_mode: String(selectedPersona.behavior_mode || "free"),
-          behavior_struct:
-            selectedPersona.behavior_struct && typeof selectedPersona.behavior_struct === "object"
-              ? {
-                  communication_style: String(selectedPersona.behavior_struct.communication_style || "unknown"),
-                  decision_speed: String(selectedPersona.behavior_struct.decision_speed || "unknown"),
-                  openness: String(selectedPersona.behavior_struct.openness || "unknown"),
-                  pressure_reaction: String(selectedPersona.behavior_struct.pressure_reaction || "unknown"),
-                  objection_level: String(selectedPersona.behavior_struct.objection_level || "unknown"),
-                  answer_length: String(selectedPersona.behavior_struct.answer_length || "unknown"),
-                  empathy_effect: String(selectedPersona.behavior_struct.empathy_effect || "unknown"),
-                  extra: String(selectedPersona.behavior_struct.extra || ""),
-                }
-              : {
-                  communication_style: "unknown",
-                  decision_speed: "unknown",
-                  openness: "unknown",
-                  pressure_reaction: "unknown",
-                  objection_level: "unknown",
-                  answer_length: "unknown",
-                  empathy_effect: "unknown",
-                  extra: "",
-                },
-          avatar_id: String(selectedPersona.avatar_id || selectedPersona.avatarId || ""),
-          persona_status: String(selectedPersona.status || ""),
-          persona_version: Number(selectedPersona.version || 0),
-          persona_updated_at: String(selectedPersona.updated_at || ""),
-        };
-      });
-    });
-    snapshotInfo.append(outdated, refreshBtn);
-  }
-  personaCard.append(snapshotInfo);
 
   const note = document.createElement("p");
   note.className = "wizard-persona-note";
@@ -2237,7 +2544,7 @@ function renderStep4(container, state, updateScenario) {
   });
   row.append(
     createField(
-      "Максимум возражений за звонок",
+      "Максимум возражений за встречу",
       maxInput,
       "Ограничение на количество срабатываний возражений."
     )
@@ -2472,7 +2779,7 @@ function renderStep5(container, state, updateScenario) {
     label.append(input, document.createTextNode(item.label));
     flags.append(label);
   });
-  finishCard.append(createField("Когда завершать звонок", flags, "Логика автозавершения сценария."));
+  finishCard.append(createField("Когда завершать встречу", flags, "Логика автозавершения сценария."));
 
   const finishMessage = createTextArea({
     value: autofinish.finish_message || "",
